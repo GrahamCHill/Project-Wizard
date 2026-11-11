@@ -1,19 +1,20 @@
 cmake_minimum_required(VERSION 3.24)
 project(__PROJECT_IDENTIFIER__ LANGUAGES __CMAKE_LANGUAGE__)
 
+find_package(Vulkan 1.3.216 REQUIRED)
+
 include(FetchContent)
 set(SDL_SHARED OFF CACHE BOOL "Build SDL as a static library")
 set(SDL_STATIC ON CACHE BOOL "Build SDL as a static library")
 set(SDL_TESTS OFF CACHE BOOL "Build SDL's tests")
 set(SDL_TEST_LIBRARY OFF CACHE BOOL "Build SDL's test library")
-FetchContent_Declare(sdl3
-    URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz
+FetchContent_Declare(sdl__SDL_MAJOR__
+    URL https://github.com/libsdl-org/SDL/releases/download/release-__SDL_VERSION__/SDL__SDL_MAJOR__-__SDL_VERSION__.tar.gz
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
-FetchContent_MakeAvailable(sdl3)
-
-find_package(OpenGL REQUIRED)
+FetchContent_MakeAvailable(sdl__SDL_MAJOR__)
 
 add_executable(app src/main.__NATIVE_EXTENSION__)
 target_compile_features(app PRIVATE __NATIVE_STANDARD__)
-target_link_libraries(app PRIVATE SDL3::SDL3-static OpenGL::GL)
+target_compile_definitions(app PRIVATE STARTER_SDL_MAJOR=__SDL_MAJOR__)
+target_link_libraries(app PRIVATE SDL__SDL_MAJOR__::SDL__SDL_MAJOR__-static Vulkan::Vulkan)

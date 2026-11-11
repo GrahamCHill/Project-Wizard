@@ -160,6 +160,14 @@ const toolchains = {
     label: 'OpenGL development files', url: 'https://docs.mesa3d.org/install.html',
     instructions: 'Install your Linux distribution’s desktop OpenGL development package.'
   },
+  'vulkan-dev': {
+    label: 'Vulkan development files', url: 'https://vulkan.lunarg.com/sdk/home',
+    instructions: {
+      win32: 'Install the Vulkan SDK and restart VS Code so VULKAN_SDK is set. Use a graphics driver with Vulkan support.',
+      darwin: 'Install the Vulkan SDK with MoltenVK. Set up the SDK environment for VS Code and your build shell.',
+      linux: 'Install your distribution’s Vulkan loader development package and a Vulkan driver, or install and activate the Vulkan SDK.'
+    }
+  },
   cuda: {
     label: 'NVIDIA CUDA Toolkit', url: 'https://developer.nvidia.com/cuda-downloads',
     instructions: 'Install the CUDA Toolkit and a supported C++ compiler. A compatible NVIDIA GPU and driver are needed to run the sample.'
@@ -380,6 +388,23 @@ async function findAndroidTools({ env, home, platform }) {
   }
 }
 
+async function findVulkanSdk({ env, platform }) {
+  const root = env.VULKAN_SDK;
+  if (!root || !path.isAbsolute(root)) return;
+  const windows = platform === 'win32';
+  const header = path.join(root, windows ? 'Include' : 'include', 'vulkan', 'vulkan_core.h');
+  const loaders = windows ? ['Lib/vulkan-1.lib', 'Lib32/vulkan-1.lib'] :
+    platform === 'darwin' ? ['lib/libvulkan.dylib'] : ['lib/libvulkan.so', 'lib64/libvulkan.so'];
+  const [contents, ...libraries] = await Promise.all([
+    fs.readFile(header, 'utf8').catch(() => ''),
+    ...loaders.map(file => fs.access(path.join(root, file)).then(() => true, () => false))
+  ]);
+  if (!contents || !libraries.some(Boolean)) return;
+  const patch = contents.match(/^#define VK_HEADER_VERSION\s+(\d+)/m)?.[1];
+  const version = contents.match(/^#define VK_HEADER_VERSION_COMPLETE\s+VK_MAKE_API_VERSION\(\s*\d+,\s*(\d+),\s*(\d+)/m);
+  return { version: version && patch ? `${version[1]}.${version[2]}.${patch}` : 'SDK', file: root };
+}
+
 async function detectToolchains(settings = system) {
   const { platform, env, home } = settings;
   const fromPath = pathDirectories(env);
@@ -421,7 +446,7 @@ async function detectToolchains(settings = system) {
     findAndroidTools(settings)
   ]);
   const [uv, conda, virtualenv, rustc, cargo, go, swift, javac, kotlin, zig, node, npm, cmake, compiler, cpp, cuda, qt, manager,
-    [ruby, bundler, php, lua, love, gradle, android]] = await Promise.all([
+    [ruby, bundler, php, lua, love, gradle, android], vulkanSdk] = await Promise.all([
     probe(['uv'], ['--version'], /\buv (\d+\.\d+\.\d+)/, [path.join(home, '.cargo', 'bin')]),
     probe(['conda'], ['--version'], /\bconda (\d+\.\d+(?:\.\d+)?)/, [
       env.CONDA_EXE && path.dirname(env.CONDA_EXE),
@@ -443,7 +468,8 @@ async function detectToolchains(settings = system) {
     !mac ? probe(['nvcc'], ['--version'], /\bV(\d+\.\d+\.\d+)/, [bin(env.CUDA_PATH), ...cudaInstallations, '/usr/local/cuda/bin']) : undefined,
     findQt(settings, common),
     findPackageManager(common, platform),
-    additionalTools
+    additionalTools,
+    findVulkanSdk(settings)
   ]);
   const pythonVersions = await findPythonVersions(directories(pythonInstallations,
     env.VIRTUAL_ENV && path.join(env.VIRTUAL_ENV, windows ? 'Scripts' : 'bin'),
@@ -484,6 +510,7 @@ async function detectToolchains(settings = system) {
     'wx-gtk': wx || gtk,
     'sdl-desktop': x11 || wayland,
     'opengl-dev': gl,
+    'vulkan-dev': requireVersion(vulkanSdk || (!windows ? await pkgConfig('vulkan') : undefined), 1, 3, 216),
     cuda,
     ...qt
   };

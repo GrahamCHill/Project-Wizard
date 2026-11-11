@@ -8,6 +8,7 @@ function starter(id, group, language, label, description, tools, files, commands
     note: options.note,
     cmakeTarget: options.cmakeTarget,
     androidCmake: options.androidCmake,
+    sdlVersion: options.sdlVersion,
     next: 'Follow the run commands in README.md.'
   };
 }
@@ -20,18 +21,36 @@ const qtRun = 'Use a Qt kit that matches your compiler and architecture. Run the
 const cudaRun = 'Use a C++ compiler supported by your CUDA Toolkit. To target a specific GPU, set CMAKE_CUDA_ARCHITECTURES during configuration. Running the sample requires a compatible NVIDIA GPU and driver. ' + cmakeRun;
 const sdlRun = 'CMake fetches SDL during the first configuration. On Linux, install the SDL build prerequisites for your distribution. ' + cmakeRun;
 
-function sdlPair(id, label, description, extraLinuxTools = []) {
+function sdlPair(id, label, description, options = {}) {
   return ['C', 'C++'].map(language => {
     const cpp = language === 'C++';
     return starter(id + (cpp ? '-cpp' : '-c'), 'graphics', language, label + ' for ' + language, description,
-      ['cmake', cpp ? 'cpp-compiler' : 'c-compiler'], ['CMakeLists.txt', 'src/main.c', 'gitignore'], cmakeBuild, {
+      ['cmake', cpp ? 'cpp-compiler' : 'c-compiler', ...(options.tools || [])],
+      ['CMakeLists.txt', 'src/main.c', 'gitignore'], cmakeBuild, {
         cmakeTarget: 'app',
-        sourceDirectory: cpp ? id + '-c' : undefined,
-        platformTools: { linux: ['sdl-desktop', ...extraLinuxTools] },
-        note: sdlRun
+        sourceDirectory: options.sourceDirectory || (cpp ? id + '-c' : undefined),
+        platformTools: { linux: ['sdl-desktop', ...(options.linuxTools || [])] },
+        sdlVersion: options.sdlVersion,
+        requirement: options.requirement,
+        note: options.note ? sdlRun + ' ' + options.note : sdlRun
       });
   });
 }
+
+const sdlGraphics = ['2.32.10', '3.4.16'].flatMap(sdlVersion => {
+  const sdl = 'SDL' + sdlVersion[0];
+  const id = sdl.toLowerCase();
+  return [
+    ...sdlPair(id + '-opengl', sdl + ' + OpenGL', 'An OpenGL 3.3 core context and a render loop.', {
+      sourceDirectory: 'sdl-opengl', sdlVersion, linuxTools: ['opengl-dev']
+    }),
+    ...sdlPair(id + '-vulkan', sdl + ' + Vulkan', 'A Vulkan swapchain with a resize-aware color-clear render loop.', {
+      sourceDirectory: 'sdl-vulkan', sdlVersion, tools: ['vulkan-dev'],
+      requirement: 'CMake, a native compiler, and Vulkan development files 1.3.216 or newer. Run with a Vulkan 1.1 driver or MoltenVK.',
+      note: 'On Windows, install the Vulkan SDK and restart your shell so VULKAN_SDK is set. On Linux, install your distribution’s Vulkan loader development package and a Vulkan driver. On macOS, install the Vulkan SDK with MoltenVK and load its setup-env.sh before building and running.'
+    })
+  ];
+});
 
 function raylibVr(language) {
   return starter(language === 'C' ? 'raylib-vr-android-c' : 'raylib-vr-android-cpp', 'vr', language,
@@ -64,7 +83,7 @@ const standardTemplates = [
     { cmakeTarget: 'app', platformTools: { linux: ['wx-gtk'] }, note: 'CMake uses an installed wxWidgets or downloads wxWidgets 3.2.9. ' + cmakeRun }),
   ...sdlPair('sdl2', 'SDL2', 'A resizable SDL2 window with a 2D rendering and input loop.'),
   ...sdlPair('sdl3', 'SDL3', 'A resizable SDL3 window with a 2D rendering and input loop.'),
-  ...sdlPair('sdl3-opengl', 'SDL3 + OpenGL', 'An SDL3 window with an OpenGL 3.3 core context and a render loop.', ['opengl-dev']),
+  ...sdlGraphics,
   ...['C', 'C++'].map(raylibVr),
   starter('kotlin-android-xr', 'vr', 'Kotlin', 'Kotlin Android XR', 'A Jetpack Compose for XR spatial panel with Home Space and Full Space controls.',
     ['android-xr-gradle', 'android-sdk'], ['settings.gradle.kts', 'build.gradle.kts', 'gradle.properties',

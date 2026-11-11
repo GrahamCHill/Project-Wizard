@@ -273,6 +273,30 @@ test('pairs every C starter with a C++ CMake build', async t => {
   }
 });
 
+test('offers OpenGL and Vulkan for both SDL versions and checks Vulkan setup', async t => {
+  const root = await fixture(t);
+  const tools = { cmake: {}, 'c-compiler': {}, 'cpp-compiler': {} };
+  for (const major of [2, 3]) {
+    for (const [api, label, target] of [['opengl', 'OpenGL', 'OpenGL::GL'], ['vulkan', 'Vulkan', 'Vulkan::Vulkan']]) {
+      for (const [suffix, language] of [['c', 'C'], ['cpp', 'C++']]) {
+        const id = `sdl${major}-${api}-${suffix}`;
+        const template = starters.find(item => item.id === id);
+        assert.equal(template.label, `SDL${major} + ${label} for ${language}`);
+        const missing = templateAvailability(template, tools, 'win32').missing.map(tool => tool.id);
+        assert.deepEqual(missing, api === 'vulkan' ? ['vulkan-dev'] : []);
+        assert.ok(templateAvailability(template, { ...tools, 'vulkan-dev': {} }, 'win32').ready);
+
+        const project = await createProject(root, id, (destination, parent) => writeStarter(template, id, destination, parent));
+        const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
+        assert.ok(cmake.includes(`SDL${major}::SDL${major}-static ${target}`));
+        assert.ok(cmake.includes(`STARTER_SDL_MAJOR=${major}`));
+        assert.doesNotMatch(cmake, /__SDL_[A-Z]+__/);
+        assert.match(await fs.readFile(path.join(project, 'src', `main.${suffix}`), 'utf8'), /starter_add\(/);
+      }
+    }
+  }
+});
+
 test('requires a Python environment manager and exposes only matching local interpreter versions', () => {
   const template = starters.find(item => item.id === 'python-desktop');
   const config = projectOptions(template, { uv: { file: 'uv' } }, [

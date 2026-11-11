@@ -64,7 +64,10 @@ async function writeStarter(template, name, project, parent, log) {
     await fs.mkdir(path.dirname(target), { recursive: true });
     const rendered = file === 'CMakeLists.txt' ? contents.replaceAll('__CMAKE_LANGUAGE__', cpp ? 'CXX' : 'C')
       .replaceAll('__NATIVE_EXTENSION__', cpp ? 'cpp' : 'c').replaceAll('__NATIVE_STANDARD__', cpp ? 'cxx_std_17' : 'c_std_99') : contents;
-    const source = rendered.replaceAll('__NATIVE_LABEL__', cpp ? 'C++' : 'C');
+    let source = rendered.replaceAll('__NATIVE_LABEL__', cpp ? 'C++' : 'C');
+    if (template.sdlVersion) {
+      source = source.replaceAll('__SDL_VERSION__', template.sdlVersion).replaceAll('__SDL_MAJOR__', template.sdlVersion[0]);
+    }
     await fs.writeFile(target, replaceTokens(source, name, sdk?.major), { flag: 'wx' });
   }
   if (template.cmakeTarget) {

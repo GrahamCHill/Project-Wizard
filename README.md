@@ -12,7 +12,7 @@ npm test
 npm run package
 ```
 
-The build writes `project-wizard-0.5.0.vsix` in this folder. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
+The build writes `project-wizard-0.5.1.vsix` in this folder. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
 
 For development, open this folder in VS Code and press `F5` to start the **Run Project Wizard** Extension Development Host. Open the wizard in that window to test the source directly.
 
@@ -39,7 +39,7 @@ VR templates are off by default. Select **Enable VR templates** and save to show
 | Command line | C and C++ with CMake, CUDA kernel and library, Python, Ruby, PHP, Lua, Rust, Go, Swift, Java, Kotlin/JVM, Zig, and .NET |
 | Desktop | Qt Widgets, Qt Quick, and wxWidgets with CMake, Python Tkinter, Java and Kotlin Swing, macOS SwiftUI and AppKit, and Windows Forms |
 | Mobile | React Native for Android and iOS with Expo or the Community CLI |
-| Graphics | SDL2, SDL3, and SDL3 with OpenGL 3.3 in C and C++, plus LÖVE for Lua |
+| Graphics | SDL2 and SDL3 with a choice of SDL 2D, OpenGL 3.3, or Vulkan in C and C++, plus LÖVE for Lua |
 | Web frontend | Static HTML/CSS/JavaScript and TypeScript with Vite |
 | Web server | Python, Ruby with Sinatra, PHP, Rust with Axum, Go, Java, Kotlin/JVM, Node.js, and ASP.NET Core |
 | Games | MonoGame and Raylib for C, C++, or C# |
@@ -47,6 +47,8 @@ VR templates are off by default. Select **Enable VR templates** and save to show
 | VR (opt-in) | Kotlin with Jetpack Compose for XR, plus native Android Raylib for C and C++ |
 
 The generated README provides build and run commands. Use a Qt kit that matches your C++ compiler and set `CMAKE_PREFIX_PATH` to that kit. CUDA projects require the NVIDIA CUDA Toolkit and a supported host compiler. Running a CUDA sample also needs a compatible GPU and driver. Expo uses Node.js 22.13 or newer and a compatible Expo SDK 57 client or development build. [Qt setup](https://doc.qt.io/qt-6/qt-online-installation.html) · [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) · [Expo device setup](https://docs.expo.dev/get-started/set-up-your-environment/)
+
+In **Graphics**, choose your SDL version, graphics API, and language from the template names. The Vulkan starters clear and present a Vulkan swapchain and rebuild it on resize. Use a Vulkan 1.1 runtime and development files 1.3.216 or newer. On macOS, use the Vulkan SDK with MoltenVK. If a template needs setup, clear **Ready to use** to see the guide. [Vulkan SDK downloads](https://vulkan.lunarg.com/sdk/home)
 
 MonoGame and built-in .NET generators require an active .NET SDK 8 or newer. Use **MonoGame → Install MonoGame templates** if the project templates are missing.
 
@@ -75,11 +77,11 @@ Paths and UTF-8 text files up to 1 MiB can contain `__PROJECT_NAME__`, `__PROJEC
 
 Commit this folder to a GitHub repository with Actions enabled. The **Build Project Wizard** workflow in `.github/workflows/build.yml` runs on pushes, pull requests, and manual dispatch. It runs tests on Windows, macOS, and Linux, then packages a VSIX. Open a successful run in the **Actions** tab and download **project-wizard-vsix** from **Artifacts**.
 
-To publish a release, commit the version in `package.json` and `package-lock.json`, then push a matching tag such as `v0.5.0`. After the three test jobs pass, the workflow creates the GitHub release and attaches `project-wizard-0.5.0.vsix` under **Assets**. It attaches the VSIX to an existing release for the same tag if needed.
+To publish a release, commit the version in `package.json` and `package-lock.json`, then push a matching tag such as `v0.5.1`. After the three test jobs pass, the workflow creates the GitHub release and attaches `project-wizard-0.5.1.vsix` under **Assets**. It attaches the VSIX to an existing release for the same tag if needed.
 
 ```sh
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.5.1
+git push origin v0.5.1
 ```
 
 ## Add more starters

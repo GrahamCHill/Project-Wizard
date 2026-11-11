@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "__PROJECT_NAME__",
+    "slug": "__PROJECT_SLUG__",
+    "platforms": [
+      "android",
+      "ios"
+    ]
+  }
+}

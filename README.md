@@ -1,0 +1,65 @@
+# Project Wizard for VS Code
+
+Create command-line, desktop, mobile, web, and game projects from VS Code. Project Wizard detects local toolchains, offers setup help, and can also scaffold from ZIP files.
+
+## Build and install
+
+Use Node.js 24 and npm to build the extension. Use desktop VS Code 1.96 or newer to run it.
+
+```sh
+npm ci
+npm test
+npm run package
+```
+
+The build writes `project-wizard-0.3.0.vsix` in this folder. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
+
+For development, open this folder in VS Code and press `F5` to start the **Run Project Wizard** Extension Development Host. Open the wizard in that window to test the source directly.
+
+## Open the project menu
+
+1. Press `Ctrl+Shift+P` on Windows or Linux, or `Cmd+Shift+P` on macOS. Run **Project Wizard: New Project**.
+2. Choose a project category and language, select a template, and enter a **Name** and **Location**. The location is the parent of the new project folder.
+3. Set any **Project setup** options, choose where to open the result, and click **Create Project**.
+
+To scaffold inside your current workspace, use **Project Wizard: New Project in Workspace…** and select a workspace root if prompted. You can also right-click any folder in Explorer and select **New Project**. Both routes default to **Keep in current workspace**, which creates and reveals the project folder in Explorer.
+
+**Ready to use** is checked by default. Clear it to see starters that need setup. Select one to see its tool requirements and installation guides. Expand **Detected toolchains** to see installed versions and executable locations. Use **Refresh templates** after setup, and restart VS Code if your installer changed PATH. The catalog shows platform-specific starters on their supported systems.
+
+## Templates
+
+| Category | Examples |
+| --- | --- |
+| Command line | C and C++ with CMake, CUDA kernel and library, Python, Rust, Go, Swift, Java, Kotlin/JVM, Zig, and .NET |
+| Desktop | Qt Widgets and Qt Quick with CMake, Python Tkinter, Java and Kotlin Swing, macOS SwiftUI and AppKit, and Windows Forms |
+| Mobile | Expo React Native for Android and iOS |
+| Web frontend | Static HTML/CSS/JavaScript and TypeScript with Vite |
+| Web server | Python, Rust with Axum, Go, Java, Kotlin/JVM, Node.js, and ASP.NET Core |
+| Games | MonoGame and Raylib for C or C# |
+
+The generated README provides build and run commands. Use a Qt kit that matches your C++ compiler and set `CMAKE_PREFIX_PATH` to that kit. CUDA projects require the NVIDIA CUDA Toolkit and a supported host compiler. Running a CUDA sample also needs a compatible GPU and driver. Expo uses Node.js 22.13 or newer and a compatible Expo SDK 57 client or development build. [Qt setup](https://doc.qt.io/qt-6/qt-online-installation.html) · [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) · [Expo device setup](https://docs.expo.dev/get-started/set-up-your-environment/)
+
+MonoGame and built-in .NET generators require an active .NET SDK 8 or newer. Use **MonoGame → Install MonoGame templates** if the project templates are missing.
+
+## Project setup
+
+- **Python** offers built-in `venv`, `uv`, Conda, `virtualenv`, and an existing environment. Choose an installed interpreter version or enter a version for uv or Conda to provision. The wizard writes `pyproject.toml`, `environment.yml`, or `requirements.txt` as appropriate. Check **Create the environment now** to provision the project-local `.venv` and install its selected packages. Leave it clear to generate setup instructions and dependency files for later.
+- **CMake** offers curated libraries and accepts custom archive dependencies. The format is `name target https://example.com/library.tar.gz [sha256]`, one dependency per line. The generated project uses `FetchContent` to obtain and link the dependencies when you configure the build.
+- **npm** starters accept one dependency per line, for example `@scope/package@^1.0.0`. The selected packages go into `package.json`.
+- **Tests** are optional. C++ and CUDA can include GoogleTest, C can include a CTest executable, and Python can include pytest. The Node.js, Go, Rust, and Zig starters also offer an example test. Follow the generated README to run it.
+
+## Custom ZIP templates
+
+1. Put each starter project in a separate `.zip` file in one directory.
+2. Run **Project Wizard: Choose ZIP Templates Folder**, or use **Custom ZIPs → Choose ZIP folder…**. The wizard saves the location in `projectWizard.zipTemplatesDirectory`.
+3. Choose an archive by filename. The wizard removes a single wrapper directory and preserves the rest of the project structure.
+
+Paths and UTF-8 text files up to 1 MiB can contain `__PROJECT_NAME__`, `__PROJECT_IDENTIFIER__`, or `__PROJECT_SLUG__`. For a project named `My Game`, they expand to `My Game`, `My_Game`, and `my-game`. Identifiers starting with a digit receive a leading underscore. ZIPs must be unencrypted and may contain up to 10,000 entries and 1 GiB of uncompressed data.
+
+## GitHub Actions
+
+Commit this folder to a GitHub repository with Actions enabled. The **Build Project Wizard** workflow in `.github/workflows/build.yml` runs on pushes, pull requests, and manual dispatch. It runs tests on Windows, macOS, and Linux, then packages a VSIX. Open a successful run in the **Actions** tab and download **project-wizard-vsix** from **Artifacts**.
+
+## Add more starters
+
+Register starters in `src/standard-templates.js` and add their source files under `templates/`. Toolchain detection and installation guides live in `src/toolchains.js`. Project setup choices are defined in `src/project-options.js`.

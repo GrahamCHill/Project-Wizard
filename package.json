@@ -1,0 +1,72 @@
+{
+  "name": "project-wizard",
+  "displayName": "Project Wizard",
+  "description": "Create CLI, desktop, mobile, web, and game projects with local toolchain detection and custom ZIP templates.",
+  "version": "0.3.0",
+  "publisher": "project-wizard-local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": ["Other"],
+  "main": "./src/extension.js",
+  "extensionKind": ["workspace"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Project Wizard runs locally installed project generators."
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "projectWizard.newProject",
+        "title": "New Project",
+        "category": "Project Wizard"
+      },
+      {
+        "command": "projectWizard.newProjectInWorkspace",
+        "title": "New Project in Workspace…",
+        "category": "Project Wizard"
+      },
+      {
+        "command": "projectWizard.chooseZipDirectory",
+        "title": "Choose ZIP Templates Folder",
+        "category": "Project Wizard"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "projectWizard.newProject",
+          "when": "explorerResourceIsFolder",
+          "group": "navigation@30"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Project Wizard",
+      "properties": {
+        "projectWizard.zipTemplatesDirectory": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Absolute path to the folder containing .zip project templates."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "package": "vsce package --allow-missing-repository --skip-license"
+  },
+  "dependencies": {
+    "buffer-crc32": "0.2.13",
+    "yauzl": "3.4.0"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "4.1.0",
+    "yazl": "2.5.1"
+  }
+}

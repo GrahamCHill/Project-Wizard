@@ -1,0 +1,241 @@
+const assert = require('node:assert/strict');
+const { createWriteStream } = require('node:fs');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { pipeline } = require('node:stream/promises');
+const { test } = require('node:test');
+const { ZipFile } = require('yazl');
+const { createProject, detectFrameworks, parseMonoGameTemplates, validateProjectName } = require('../src/projects');
+const { starters, writeStarter } = require('../src/starters');
+const { getSetup, supportsVite, templateAvailability, templatesForPlatform } = require('../src/toolchains');
+const { applyProjectOptions, projectOptions, readProjectOptions } = require('../src/project-options');
+const { selectPython } = require('../src/python-options');
+const { extractZipTemplate, listZipTemplates } = require('../src/zip-templates');
+
+async function fixture(t) {
+  const temp = await fs.realpath(os.tmpdir());
+  const directory = await fs.mkdtemp(path.join(temp, 'project-wizard-test-'));
+  t.after(async () => {
+    assert.equal(path.dirname(directory), temp);
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+  return directory;
+}
+
+async function writeZip(folder, entries) {
+  const archive = path.join(folder, 'Starter.ZIP');
+  const zip = new ZipFile();
+  const written = pipeline(zip.outputStream, createWriteStream(archive));
+  for (const [name, data, options] of entries) {
+    zip.addBuffer(Buffer.from(data), name, options);
+  }
+  zip.end();
+  await written;
+  return archive;
+}
+
+test('discovers MonoGame aliases and framework package references', () => {
+  const templates = parseMonoGameTemplates(`Template Name   Short Name   Language   Tags
+MonoGame Cross-Platform OpenGL Desktop Application  mgdesktopgl  [C#]  MonoGame/Games/Desktop
+MonoGame Empty Game  monogame,mg-emptygame  [C#]  MonoGame/Games/Empty
+Console App  console  [C#],F#,VB  Common/Console`);
+  assert.deepEqual(templates.map(({ shortName }) => shortName), ['mg-emptygame', 'mgdesktopgl']);
+  assert.equal(templates[0].language, 'C#');
+  assert.deepEqual(detectFrameworks('Example.csproj', `<ItemGroup>
+    <PackageReference Version="3.8.6" Include="MonoGame.Framework.DesktopGL" />
+    <PackageReference Include='Raylib-cs' />
+  </ItemGroup>`), ['MonoGame', 'Raylib']);
+  assert.deepEqual(detectFrameworks('CMakeLists.txt', 'FetchContent_Declare(\n  raylib\n  URL test)'), ['Raylib']);
+  assert.deepEqual(detectFrameworks('Example.csproj', '<!-- <PackageReference Include="Raylib-cs"/> -->'), []);
+});
+
+test('creates a Raylib C starter and preserves an existing project', async t => {
+  const parent = await fixture(t);
+  const template = starters.find(item => item.id === 'raylib-c');
+  const name = '9 Test-Game';
+  const project = await createProject(parent, name, (target, root) => writeStarter(template, name, target, root));
+  assert.match(await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8'), /project\(_9_Test_Game/);
+  assert.match(await fs.readFile(path.join(project, 'src', 'main.c'), 'utf8'), /"9 Test-Game"/);
+  assert.equal(await fs.readFile(path.join(project, '.gitignore'), 'utf8'), 'build/\n');
+  await assert.rejects(createProject(parent, name, () => assert.fail('Ran generator twice')), /already exists/);
+  assert.throws(() => validateProjectName('../outside'), /project name/);
+  assert.throws(() => validateProjectName('COM1.cs'), /project name/);
+});
+
+test('scaffolds ZIP templates with wrapper folders, tokens and binary assets', async t => {
+  const parent = await fixture(t);
+  const binary = Buffer.alloc(1024 ** 2 + 16, 0xfe);
+  const zip = await writeZip(parent, [
+    ['wrapper/src/__PROJECT_NAME__.txt', '\uFEFF__PROJECT_IDENTIFIER__\r\n'],
+    ['wrapper/logo.bin', binary],
+    ['__MACOSX/metadata', 'ignore']
+  ]);
+  const catalog = await listZipTemplates(parent);
+  assert.deepEqual(catalog.templates.map(item => item.label), ['Starter']);
+  assert.equal(catalog.templates[0].archive, zip);
+  const project = await createProject(parent, '9 Game', target => extractZipTemplate(zip, target, '9 Game'));
+  assert.equal(await fs.readFile(path.join(project, 'src', '9 Game.txt'), 'utf8'), '\uFEFF_9_Game\r\n');
+  assert.deepEqual(await fs.readFile(path.join(project, 'logo.bin')), binary);
+  assert.deepEqual((await fs.readdir(project)).sort(), ['logo.bin', 'src']);
+});
+
+test('rejects traversal, links, duplicate names and corrupt data without leaving project files', async t => {
+  const cases = [
+    { entries: [['xx/escape.txt', 'test']], original: 'xx/escape.txt', replacement: '../escape.txt', error: /relative path|invalid path/i },
+    { entries: [['link', '..', { mode: 0o120777 }]], error: /link or special file/ },
+    { entries: [['Name.txt', '1'], ['name.txt', '2']], error: /conflicting paths/i },
+    { entries: [['contents', 'right-data', { compress: false }]], original: 'right-data', replacement: 'wrong-data', error: /corrupt zip entry/i }
+  ];
+  for (const { entries, original, replacement, error } of cases) {
+    const parent = await fixture(t);
+    const archive = await writeZip(parent, entries);
+    if (original) {
+      const data = await fs.readFile(archive);
+      for (let offset = data.indexOf(original); offset !== -1; offset = data.indexOf(original, offset + original.length)) {
+        data.write(replacement, offset, original.length, 'utf8');
+      }
+      await fs.writeFile(archive, data);
+    }
+    await assert.rejects(createProject(parent, 'BadZip', target => extractZipTemplate(archive, target, 'BadZip')), error);
+    assert.deepEqual(await fs.readdir(parent), ['Starter.ZIP']);
+  }
+});
+
+test('two simultaneous requests cannot replace the same project folder', async t => {
+  const parent = await fixture(t);
+  const attempt = content => createProject(parent, 'SameName', target => fs.writeFile(path.join(target, 'file'), content));
+  const attempts = await Promise.allSettled([attempt('first'), attempt('second')]);
+  assert.deepEqual(attempts.map(result => result.status).sort(), ['fulfilled', 'rejected']);
+  const winner = attempts[0].status === 'fulfilled' ? 'first' : 'second';
+  assert.equal(await fs.readFile(path.join(parent, 'SameName', 'file'), 'utf8'), winner);
+  assert.deepEqual(await fs.readdir(parent), ['SameName']);
+});
+
+test('generates the bundled source templates with portable names and run instructions', async t => {
+  const root = await fixture(t);
+  const templates = starters.filter(template => template.commands);
+  const name = '9 Example Project';
+  assert.ok(templates.length >= 20);
+  for (const template of templates) {
+    const parent = path.join(root, template.id);
+    await fs.mkdir(parent);
+    const project = await createProject(parent, name, (target, directory) => writeStarter(template, name, target, directory));
+    for (const file of template.files) {
+      const generated = path.join(project, file === 'gitignore' ? '.gitignore' : file);
+      assert.doesNotMatch(await fs.readFile(generated, 'utf8'), /__PROJECT_[A-Z]+__/);
+    }
+    const readme = await fs.readFile(path.join(project, 'README.md'), 'utf8');
+    assert.match(readme, /^# 9 Example Project/);
+    if (template.commands.length) assert.ok(readme.includes(template.commands[0]));
+  }
+});
+
+test('maps tool requirements to install help and distinguishes OS support from missing tools', () => {
+  const templates = new Map(starters.map(template => [template.id, template]));
+  const java = { version: '25', file: '/jdk/bin/javac' };
+  assert.equal(templateAvailability(templates.get('java-server'), { java }, 'win32').ready, true);
+  const kotlin = templateAvailability(templates.get('kotlin-desktop'), { java }, 'win32');
+  assert.equal(kotlin.supported, true);
+  assert.equal(kotlin.ready, false);
+  assert.deepEqual(kotlin.missing.map(tool => tool.id), ['kotlin']);
+  const apple = templateAvailability(templates.get('objc-desktop'), { 'apple-sdk': {} }, 'win32');
+  assert.equal(apple.supported, false);
+  assert.equal(apple.ready, false);
+  assert.equal(templateAvailability(templates.get('javascript-frontend'), {}, 'linux').ready, true);
+  assert.equal(templateAvailability(templates.get('go-cli'), { go: { version: '1.19', usable: false } }, 'linux').ready, false);
+  assert.match(getSetup('zig', 'win32', 'windows').command, /winget install/);
+  assert.equal(getSetup('zig', 'win32').command, undefined);
+  assert.equal(getSetup('constructor', 'win32'), undefined);
+  assert.match(getSetup('swift', 'win32').url, /windows/);
+  assert.equal(supportsVite('20.18.0'), false);
+  assert.equal(supportsVite('20.19.0'), true);
+  assert.equal(supportsVite('21.9.0'), false);
+  assert.equal(supportsVite('22.11.0'), false);
+  assert.equal(supportsVite('22.12.0'), true);
+  assert.equal(supportsVite('24.0.0'), true);
+});
+
+test('excludes macOS-only starters on other hosts and recognizes Python managers', () => {
+  for (const platform of ['win32', 'linux']) {
+    const visible = templatesForPlatform(starters, platform);
+    assert.ok(visible.some(template => template.id === 'swift-cli'));
+    assert.ok(visible.some(template => template.id === 'expo-mobile'));
+    assert.ok(visible.every(template => !['swift-desktop', 'objc-desktop'].includes(template.id)));
+  }
+  assert.ok(templatesForPlatform(starters, 'darwin').some(template => template.id === 'objc-desktop'));
+  const python = starters.find(template => template.id === 'python-cli');
+  const tools = { uv: { file: 'uv' } };
+  assert.equal(templateAvailability(python, tools, 'linux').ready, true);
+  assert.equal(projectOptions(python, tools).defaultEnvironment, 'uv');
+});
+
+test('writes CMake dependency declarations and opt-in C or GoogleTest examples', async t => {
+  const root = await fixture(t);
+  for (const [id, name, library, testFile] of [
+    ['c-cmake', 'CTestApp', 'yyjson', 'example_test.c'],
+    ['cpp-cmake', 'GoogleTestApp', 'fmt', 'example_test.cpp']
+  ]) {
+    const template = starters.find(item => item.id === id);
+    const options = readProjectOptions(template, {
+      libraries: [library], testing: true,
+      dependencies: 'custom custom::custom https://example.com/custom.tar.gz ' + 'a'.repeat(64)
+    });
+    const project = await createProject(root, name, async (target, parent) => {
+      await writeStarter(template, name, target, parent);
+      await applyProjectOptions(target, template, name, options);
+    });
+    assert.match(await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8'), /include\(cmake\/ProjectOptions\.cmake\)/);
+    const cmake = await fs.readFile(path.join(project, 'cmake', 'ProjectOptions.cmake'), 'utf8');
+    assert.ok(cmake.includes('FetchContent_MakeAvailable(' + library + ')'));
+    assert.match(cmake, /URL_HASH SHA256=a{64}/);
+    assert.match(cmake, /target_link_libraries\(app PRIVATE custom::custom\)/);
+    assert.match(cmake, id === 'c-cmake' ? /add_test\(NAME example_test/ : /gtest_discover_tests\(example_test/);
+    assert.ok(await fs.stat(path.join(project, 'tests', testFile)));
+    assert.throws(() => readProjectOptions(template, { dependencies: 'bad dep https://example.com/a";foo' }), /CMake dependency/);
+  }
+});
+
+test('writes Python manager-specific configuration and resolves installed interpreter versions', async t => {
+  const root = await fixture(t);
+  const template = starters.find(item => item.id === 'python-desktop');
+  const runtime = { file: 'python', version: '3.13.4', usable: true, tkinter: true, virtualenv: true };
+  for (const [environment, configFile, configPattern, command] of [
+    ['uv', 'pyproject.toml', /\[dependency-groups\]/, 'uv run python -m pytest'],
+    ['conda', 'environment.yml', /python=3\.13\n  - tk/, 'conda run --prefix ./.venv python -m pytest'],
+    ['venv', 'requirements.txt', /requests>=2,<3/, 'python3.13 -m venv .venv'],
+    ['virtualenv', 'requirements.txt', /pytest/, 'python3.13 -m virtualenv .venv']
+  ]) {
+    const options = readProjectOptions(template, {
+      environment, pythonVersion: '3.13', dependencies: 'requests>=2,<3', testing: true, createEnvironment: true
+    });
+    const project = await createProject(root, environment, async (target, parent) => {
+      await writeStarter(template, environment, target, parent);
+      await applyProjectOptions(target, template, environment, options);
+    });
+    assert.match(await fs.readFile(path.join(project, configFile), 'utf8'), configPattern);
+    assert.ok((await fs.readFile(path.join(project, 'README.md'), 'utf8')).includes(command));
+    assert.ok(await fs.stat(path.join(project, 'tests', 'test_example.py')));
+    assert.ok(selectPython(options, { uv: { file: 'uv' }, conda: { file: 'conda' } }, [runtime], template));
+  }
+  assert.throws(() => readProjectOptions(template, { dependencies: '-r untrusted.txt' }), /Python package/);
+  assert.throws(() => readProjectOptions(template, { pythonVersion: '2.7' }), /Python version/);
+  const missing = readProjectOptions(template, { environment: 'venv', pythonVersion: '3.12' });
+  assert.equal(selectPython(missing, {}, [runtime], template), undefined);
+});
+
+test('preserves mobile dependencies and adds selected npm packages and tests', async t => {
+  const root = await fixture(t);
+  const template = starters.find(item => item.id === 'expo-mobile');
+  const options = readProjectOptions(template, { dependencies: 'lodash@^4.17.21', testing: true });
+  const project = await createProject(root, 'My Mobile App', async (target, parent) => {
+    await writeStarter(template, 'My Mobile App', target, parent);
+    await applyProjectOptions(target, template, 'My Mobile App', options);
+  });
+  const manifest = JSON.parse(await fs.readFile(path.join(project, 'package.json'), 'utf8'));
+  assert.equal(manifest.name, 'my-mobile-app');
+  assert.ok(manifest.dependencies.expo && manifest.dependencies['react-native']);
+  assert.equal(manifest.dependencies.lodash, '^4.17.21');
+  assert.equal(manifest.scripts.test, 'node --test');
+  assert.ok(await fs.stat(path.join(project, 'tests', 'example.test.mjs')));
+});

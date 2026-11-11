@@ -3,6 +3,11 @@
   "displayName": "Project Wizard",
   "description": "Create CLI, desktop, mobile, web, and game projects with local toolchain detection and custom ZIP templates.",
   "version": "0.5.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GrahamCHill/Project-Wizard.git"
+  },
   "publisher": "project-wizard-local",
   "private": true,
   "engines": {
@@ -71,7 +76,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "package": "vsce package --allow-missing-repository --skip-license"
+    "package": "vsce package"
   },
   "dependencies": {
     "buffer-crc32": "0.2.13",

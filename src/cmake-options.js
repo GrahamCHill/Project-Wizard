@@ -92,23 +92,34 @@ const testExamples = {
 async function writeCmakeOptions(project, template, libraries, framework) {
   if (!libraries.length && !framework) return;
   const lines = [];
+  function addSection(condition, section) {
+    if (template.androidCmake) {
+      lines.push(`if(${condition})`, ...section.map(line => line && '    ' + line), 'endif()', '');
+    } else {
+      lines.push(...section, '');
+    }
+  }
   if (libraries.length) {
-    lines.push('include(FetchContent)');
+    const dependencies = ['include(FetchContent)'];
     for (const library of libraries) {
-      lines.push(...declare(library), 'FetchContent_MakeAvailable(' + library.id + ')',
+      dependencies.push(...declare(library), 'FetchContent_MakeAvailable(' + library.id + ')',
         'target_link_libraries(' + template.cmakeTarget + ' PRIVATE ' + library.target + ')', '');
     }
+    dependencies.pop();
+    addSection('ANDROID', dependencies);
   }
   if (framework) {
     const example = testExamples[framework];
-    lines.push('include(CTest)', 'if(BUILD_TESTING)');
-    lines.push(...example.cmake.map(line => '    ' + line), 'endif()', '');
+    addSection('NOT ANDROID', ['include(CTest)', 'if(BUILD_TESTING)', ...example.cmake.map(line => '    ' + line), 'endif()']);
     const tests = path.join(project, 'tests');
     await fs.mkdir(tests);
     await fs.writeFile(path.join(tests, example.file), example.source, { flag: 'wx' });
+    const build = template.androidCmake ? 'build/host-tests' : 'build';
+    const hostSetup = template.androidCmake ?
+      `Build the tests with a desktop C or C++ compiler.\n\n~~~sh\ncmake -S . -B ${build}\ncmake --build ${build} --config Debug\n~~~\n\n` : '';
     await fs.appendFile(path.join(project, 'README.md'),
       '\n## Tests\n\nThe app and test link the same implementation of `starter_add` in `src/`. Run CTest after configuring and building the project.\n\n' +
-      '~~~sh\nctest --test-dir build -C Debug --output-on-failure\n~~~\n\n' +
+      hostSetup + `~~~sh\nctest --test-dir ${build} -C Debug --output-on-failure\n~~~\n\n` +
       'Use CMake’s -DBUILD_TESTING=OFF option for a build without tests.\n');
   }
   const cmake = path.join(project, 'cmake');

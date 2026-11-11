@@ -9,7 +9,7 @@ if (isset($options['help'])) {
 
 $name = $options['name'] ?? 'World';
 if (!is_string($name)) {
-    fwrite(STDERR, 'Pass --name once.', PHP_EOL === "\r\n" ? 17 : 16);
+    fwrite(STDERR, 'Pass --name once.' . PHP_EOL);
     exit(1);
 }
 echo "Hello, {$name}, from __PROJECT_NAME__!", PHP_EOL;

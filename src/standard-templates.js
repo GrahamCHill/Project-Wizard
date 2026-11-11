@@ -7,6 +7,7 @@ function starter(id, group, language, label, description, tools, files, commands
     sourceDirectory: options.sourceDirectory,
     note: options.note,
     cmakeTarget: options.cmakeTarget,
+    androidCmake: options.androidCmake,
     next: 'Follow the run commands in README.md.'
   };
 }
@@ -32,6 +33,19 @@ function sdlPair(id, label, description, extraLinuxTools = []) {
   });
 }
 
+function raylibVr(language) {
+  return starter(language === 'C' ? 'raylib-vr-android-c' : 'raylib-vr-android-cpp', 'vr', language,
+    'Raylib Android VR for ' + language, 'An Android NativeActivity with a stereoscopic 3D scene and gyroscope head tracking for a phone viewer.',
+    ['android-gradle', 'android-sdk', 'android-ndk', 'android-cmake'],
+    ['settings.gradle.kts', 'build.gradle.kts', 'gradle.properties', 'CMakeLists.txt',
+      'src/main/AndroidManifest.xml', 'src/main/assets/lens.frag', 'src/main.c', 'gitignore'],
+    ['gradle assembleDebug', 'gradle installDebug'], {
+      sourceDirectory: 'raylib-vr-android', cmakeTarget: 'game', androidCmake: true,
+      requirement: 'Gradle 9.3.1+, a compatible JDK 17+, Android SDK 37, NDK r28c, and Android SDK CMake 3.31.6.',
+      note: 'Open the project in Android Studio or set ANDROID_HOME and JAVA_HOME for the command line. Run on an ARM64 Android 8+ phone in a landscape VR viewer. Tap while facing forward to recenter. The lens settings are generic and can be tuned in the source for your viewer.'
+    });
+}
+
 const standardTemplates = [
   starter('c-cmake', 'cli', 'C', 'C CMake Application', 'A portable C11 executable with a CMake build.',
     ['cmake', 'c-compiler'], ['CMakeLists.txt', 'src/main.c', 'gitignore'], cmakeBuild,
@@ -51,6 +65,14 @@ const standardTemplates = [
   ...sdlPair('sdl2', 'SDL2', 'A resizable SDL2 window with a 2D rendering and input loop.'),
   ...sdlPair('sdl3', 'SDL3', 'A resizable SDL3 window with a 2D rendering and input loop.'),
   ...sdlPair('sdl3-opengl', 'SDL3 + OpenGL', 'An SDL3 window with an OpenGL 3.3 core context and a render loop.', ['opengl-dev']),
+  ...['C', 'C++'].map(raylibVr),
+  starter('kotlin-android-xr', 'vr', 'Kotlin', 'Kotlin Android XR', 'A Jetpack Compose for XR spatial panel with Home Space and Full Space controls.',
+    ['android-xr-gradle', 'android-sdk'], ['settings.gradle.kts', 'build.gradle.kts', 'gradle.properties',
+      'src/main/AndroidManifest.xml', 'src/main/kotlin/com/example/projectwizard/xr/MainActivity.kt', 'gitignore'],
+    ['gradle assembleDebug', 'gradle installDebug'], {
+      requirement: 'Gradle 9.5+, a compatible JDK 17+, and Android SDK 37. Use an Android XR headset or emulator to see the spatial UI.',
+      note: 'Open the project in Android Studio or set ANDROID_HOME and JAVA_HOME for the command line. Run on an Android XR headset or emulator, then select Enter Full Space. The app also shows a 2D screen on an ordinary Android device.'
+    }),
   starter('cuda-cmake', 'cli', 'CUDA', 'CUDA Kernel Application', 'A CUDA C++ executable that runs and checks a small GPU kernel.',
     ['cmake', 'cpp-compiler', 'cuda'], ['CMakeLists.txt', 'src/main.cu', 'gitignore'], cmakeBuild,
     { cmakeTarget: 'app', platforms: ['win32', 'linux'], note: cudaRun }),
@@ -79,7 +101,7 @@ const standardTemplates = [
     ['ruby'], ['main.rb'], ['ruby main.rb --help', 'ruby main.rb --name World']),
   starter('ruby-sinatra', 'server', 'Ruby', 'Ruby Sinatra Server', 'A Sinatra JSON endpoint with dependencies managed by Bundler.',
     ['ruby', 'bundler'], ['app.rb', 'Gemfile'], ['bundle install', 'bundle exec ruby app.rb'],
-    { note: 'Open http://127.0.0.1:8080 after starting the server.' }),
+    { note: 'Open http://127.0.0.1:8080 after starting the WEBrick development server.' }),
   starter('php-cli', 'cli', 'PHP', 'PHP Command Line', 'A PHP script with a named option and help.',
     ['php'], ['main.php'], ['php main.php --help', 'php main.php --name=World']),
   starter('php-server', 'server', 'PHP', 'PHP Web Server', 'A JSON endpoint served from a dedicated public directory.',
@@ -127,9 +149,9 @@ const standardTemplates = [
     ['java', 'kotlin'], ['Main.kt', 'gitignore'], ['kotlinc Main.kt -include-runtime -d app.jar', 'java -jar app.jar'],
     { note: 'Open http://127.0.0.1:8080 after starting the server.' }),
   starter('kotlin-multiplatform', 'general', 'Kotlin', 'Kotlin Multiplatform Library', 'A shared Kotlin library with JVM and Node.js targets and a common test suite.',
-    ['gradle'], ['settings.gradle.kts', 'build.gradle.kts', 'src/commonMain/kotlin/Greeting.kt',
+    ['gradle'], ['settings.gradle.kts', 'build.gradle.kts', 'gradle.properties', 'src/commonMain/kotlin/Greeting.kt',
       'src/commonTest/kotlin/GreetingTest.kt', 'gitignore'], ['gradle jvmTest jsNodeTest'],
-    { requirement: 'Gradle 9.x running on JDK 17 or newer. Gradle downloads Kotlin and Node.js on the first build.',
+    { requirement: 'Gradle 9.0–9.7 running on a compatible JDK 17 or newer. Gradle downloads Kotlin and Node.js on the first build.',
       note: 'Put shared code in src/commonMain and shared tests in src/commonTest. The example tests the same public function on both targets.' }),
 
   starter('zig-cli', 'cli', 'Zig', 'Zig Command Line', 'A minimal Zig executable using the standard library.',

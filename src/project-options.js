@@ -55,7 +55,7 @@ function projectOptions(template, tools = {}, versions = []) {
   if (npmTemplates.includes(template.id)) {
     return { ...npmOptions, ...testOptions(...(template.id === 'expo-mobile' ? ['node'] : ['node', 'vitest'])) };
   }
-  if (template.id === 'kotlin-multiplatform') return;
+  if (['kotlin-multiplatform', 'kotlin-android-xr'].includes(template.id)) return;
   if (['Java', 'Kotlin'].includes(template.language)) return { type: 'jvm-tests', ...testOptions('junit') };
   if (template.language === 'Swift') return { type: 'swift-tests', ...testOptions('xctest') };
   if (nativeTests[template.language]) return { type: 'native', ...testOptions(template.language) };

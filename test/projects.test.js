@@ -13,6 +13,7 @@ const { applyProjectOptions, projectOptions, readProjectOptions } = require('../
 const { selectPython } = require('../src/python-options');
 const { extractZipTemplate, listZipTemplates } = require('../src/zip-templates');
 const { reactNativeIdentifier } = require('../src/react-native');
+const { enabledTemplates, readCatalogSettings } = require('../src/catalog');
 
 async function fixture(t) {
   const temp = await fs.realpath(os.tmpdir());
@@ -123,7 +124,8 @@ test('generates the bundled source templates with portable names and run instruc
     await fs.mkdir(parent);
     const project = await createProject(parent, name, (target, directory) => writeStarter(template, name, target, directory));
     for (const file of template.files) {
-      const output = file === 'gitignore' ? '.gitignore' : template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
+      const output = file === 'gitignore' ? '.gitignore' :
+        template.language === 'C++' && template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
       const generated = path.join(project, output);
       assert.doesNotMatch(await fs.readFile(generated, 'utf8'), /__PROJECT_[A-Z]+__/);
     }
@@ -193,7 +195,14 @@ test('writes CMake dependency declarations and opt-in C or GoogleTest examples',
     assert.match(cmake, /URL_HASH SHA256=a{64}/);
     assert.match(cmake, /target_link_libraries\(app PRIVATE custom::custom\)/);
     assert.match(cmake, id === 'c-cmake' ? /add_test\(NAME example_test/ : /gtest_discover_tests\(example_test/);
-    assert.ok(await fs.stat(path.join(project, 'tests', testFile)));
+    const suffix = path.extname(testFile);
+    const testSource = await fs.readFile(path.join(project, 'tests', testFile), 'utf8');
+    assert.match(testSource, /#include "starter\.h"/);
+    assert.match(testSource, /starter_add\(2, 3\)/);
+    assert.doesNotMatch(testSource, /int starter_add\(/);
+    assert.match(cmake, /target_link_libraries\(example_test PRIVATE starter_logic/);
+    assert.match(await fs.readFile(path.join(project, 'src', 'starter' + suffix), 'utf8'), /int starter_add\(/);
+    assert.match(await fs.readFile(path.join(project, 'src', 'main' + suffix), 'utf8'), /starter_add\(2, 3\)/);
     assert.throws(() => readProjectOptions(template, { dependencies: 'bad dep https://example.com/a";foo' }), /CMake dependency/);
   }
 });
@@ -312,4 +321,38 @@ test('offers both React Native starters with the native CLI Node versions', () =
   assert.equal(supportsReactNative('24.3.0'), true);
   assert.equal(supportsReactNative('25.1.0'), false);
   assert.equal(supportsReactNative('26.0.0'), true);
+});
+
+test('keeps VR opt-in and applies language and template settings independently', () => {
+  const templates = templatesForPlatform(starters, 'win32');
+  const defaults = enabledTemplates(templates, readCatalogSettings());
+  assert.ok(defaults.some(template => template.id === 'kotlin-multiplatform'));
+  assert.ok(defaults.every(template => template.group !== 'vr'));
+  assert.ok(defaults.every(template => template.language !== 'Objective-C'));
+  const settings = readCatalogSettings({ enableVrTemplates: true, disabledLanguages: ['Ruby', 'Ruby', 7],
+    disabledTemplates: ['lua-love', 'raylib-vr-android-c'] });
+  const enabled = enabledTemplates(templates, settings);
+  assert.deepEqual(settings.disabledLanguages, ['Ruby']);
+  assert.ok(enabled.every(template => template.language !== 'Ruby' && template.id !== 'lua-love'));
+  assert.ok(enabled.some(template => template.id === 'lua-cli'));
+  assert.deepEqual(enabled.filter(template => template.group === 'vr').map(template => template.id),
+    ['raylib-vr-android-cpp', 'kotlin-android-xr']);
+});
+
+test('keeps Android CMake sample tests on the host', async t => {
+  const root = await fixture(t);
+  const template = starters.find(item => item.id === 'raylib-vr-android-c');
+  const options = readProjectOptions(template, { testing: true, libraries: ['yyjson'] });
+  const project = await createProject(root, '9 Android VR', async (target, parent) => {
+    await writeStarter(template, '9 Android VR', target, parent);
+    await applyProjectOptions(target, template, '9 Android VR', options);
+  });
+  const cmake = await fs.readFile(path.join(project, 'cmake', 'ProjectOptions.cmake'), 'utf8');
+  assert.match(cmake, /if\(ANDROID\)[\s\S]*target_link_libraries\(game PRIVATE yyjson\)/);
+  assert.match(cmake, /if\(NOT ANDROID\)[\s\S]*target_link_libraries\(example_test PRIVATE starter_logic\)/);
+  const gradle = await fs.readFile(path.join(project, 'build.gradle.kts'), 'utf8');
+  const main = await fs.readFile(path.join(project, 'src', 'main.c'), 'utf8');
+  const applicationId = gradle.match(/applicationId = "([a-zA-Z0-9_.]+)"/)[1];
+  assert.match(applicationId, /^com\.example\.raylib\.project_[a-zA-Z0-9_]+$/);
+  assert.ok(main.includes('ASensorManager_getInstanceForPackage("' + applicationId + '")'));
 });

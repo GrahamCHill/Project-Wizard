@@ -3,6 +3,7 @@ require 'sinatra'
 
 set :bind, '127.0.0.1'
 set :port, 8080
+set :server, 'webrick'
 
 get '/' do
   content_type :json

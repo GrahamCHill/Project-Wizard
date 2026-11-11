@@ -59,7 +59,7 @@ async function writeStarter(template, name, project, parent, log) {
   const cpp = template.language === 'C++';
   for (const file of template.files) {
     const contents = await readStarterText(path.join(templateRoot, file));
-    const output = file === 'gitignore' ? '.gitignore' : template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
+    const output = file === 'gitignore' ? '.gitignore' : cpp && template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
     const target = path.join(project, replaceTokens(output, name));
     await fs.mkdir(path.dirname(target), { recursive: true });
     const rendered = file === 'CMakeLists.txt' ? contents.replaceAll('__CMAKE_LANGUAGE__', cpp ? 'CXX' : 'C')
@@ -75,10 +75,11 @@ async function writeStarter(template, name, project, parent, log) {
       await readStarterText(path.join(shared, 'starter.h')), { flag: 'wx' });
     await fs.writeFile(path.join(project, implementation),
       await readStarterText(path.join(shared, 'starter.c')), { flag: 'wx' });
+    const link = `target_link_libraries(${template.cmakeTarget} PRIVATE starter_logic)`;
     await fs.appendFile(path.join(project, 'CMakeLists.txt'), `
 add_library(starter_logic STATIC ${implementation})
 target_include_directories(starter_logic PUBLIC "\${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(${template.cmakeTarget} PRIVATE starter_logic)
+${template.androidCmake ? `if(ANDROID)\n    ${link}\nendif()` : link}
 `);
   }
   if (template.commands) {

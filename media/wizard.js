@@ -34,6 +34,10 @@ let renderedSelection;
 let optionTemplate;
 let catalogDraft;
 
+function searchText(value) {
+  return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+}
+
 function settingsCheckbox(value, text, checked) {
   const label = document.createElement('label');
   label.className = 'option-check';
@@ -46,7 +50,7 @@ function settingsCheckbox(value, text, checked) {
 }
 
 function filterSettingsTemplates() {
-  const query = settingsSearch.value.trim().toLowerCase();
+  const query = searchText(settingsSearch.value.trim());
   let matches = 0;
   for (const label of settingsTemplates.children) {
     label.hidden = !label.dataset.search.includes(query);
@@ -70,7 +74,7 @@ function openSettings() {
   const templates = [...availableTemplates].sort((a, b) => a.label.localeCompare(b.label));
   settingsTemplates.replaceChildren(...templates.map(template => {
     const label = settingsCheckbox(template.id, template.label, !catalogDraft.disabledTemplates.has(template.id));
-    label.dataset.search = `${template.label} ${template.language || ''} ${groupTitles[template.group] || ''}`.toLowerCase();
+    label.dataset.search = searchText(`${template.label} ${template.language || ''} ${groupTitles[template.group] || ''}`);
     return label;
   }));
   filterSettingsTemplates();
@@ -292,10 +296,10 @@ function updateCatalog() {
   const previousLanguage = languageSelect.value;
   languageSelect.replaceChildren(new Option('All languages', ''), ...languages.map(language => new Option(language, language)));
   if (languages.includes(previousLanguage)) languageSelect.value = previousLanguage;
-  const query = search.value.trim().toLowerCase();
+  const query = searchText(search.value.trim());
   visibleTemplates = categoryTemplates.filter(template =>
     (!languageSelect.value || template.language === languageSelect.value) && (!readyOnly.checked || template.ready) &&
-    `${template.label} ${template.language || ''} ${template.description}`.toLowerCase().includes(query))
+    searchText(`${template.label} ${template.language || ''} ${template.description}`).includes(query))
     .sort((first, second) => Number(Boolean(second.ready)) - Number(Boolean(first.ready)));
   if (!visibleTemplates.some(template => template.id === selected)) {
     selected = visibleTemplates[0]?.id;

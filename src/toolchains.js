@@ -62,6 +62,51 @@ const toolchains = {
     instructions: 'Download the latest standalone compiler and add its bin folder to PATH.',
     macos: 'brew install kotlin'
   },
+  gradle: {
+    label: 'Gradle', url: 'https://gradle.org/releases/',
+    instructions: 'Install a compatible Gradle 9.0–9.7 release and add its bin folder to PATH or set GRADLE_HOME. Run Gradle with a compatible JDK 17 or newer.'
+  },
+  'android-gradle': {
+    label: 'Gradle for Android', url: 'https://gradle.org/releases/',
+    instructions: 'Install Gradle 9.3.1 or newer. Use a compatible JDK 17+ and add Gradle to PATH or set GRADLE_HOME.'
+  },
+  'android-xr-gradle': {
+    label: 'Gradle for Android XR', url: 'https://gradle.org/releases/',
+    instructions: 'Install Gradle 9.5 or newer. Use a compatible JDK 17+ and add Gradle to PATH or set GRADLE_HOME.'
+  },
+  'android-sdk': {
+    label: 'Android SDK 37', url: 'https://developer.android.com/studio/intro/update#sdk-manager',
+    instructions: 'In Android Studio’s SDK Manager install the Android 37 SDK Platform and Build-Tools 37.0.0. Set ANDROID_HOME to the SDK folder.'
+  },
+  'android-ndk': {
+    label: 'Android NDK r28c', url: 'https://developer.android.com/studio/projects/install-ndk',
+    instructions: 'In Android Studio’s SDK Tools tab enable Show Package Details and install NDK (Side by side) 28.2.13676358.'
+  },
+  'android-cmake': {
+    label: 'Android SDK CMake', url: 'https://developer.android.com/studio/projects/install-ndk',
+    instructions: 'In Android Studio’s SDK Tools tab enable Show Package Details and install CMake 3.31.6.'
+  },
+  ruby: {
+    label: 'Ruby', url: { win32: 'https://rubyinstaller.org/downloads/', linux: 'https://www.ruby-lang.org/en/downloads/' },
+    instructions: 'Install the latest stable Ruby (3.0 or newer) and add ruby to PATH. On Windows, choose Ruby+Devkit for gems with native extensions.'
+  },
+  bundler: {
+    label: 'Bundler', url: 'https://bundler.io/',
+    instructions: 'Install Bundler for the selected Ruby with gem install bundler and make bundle available on PATH.'
+  },
+  php: {
+    label: 'PHP', url: { win32: 'https://www.php.net/downloads.php?os=windows', linux: 'https://www.php.net/downloads' },
+    instructions: 'Install a current PHP 8 release with its CLI and add php to PATH.'
+  },
+  lua: {
+    label: 'Lua', url: 'https://www.lua.org/download.html',
+    instructions: 'Install the latest Lua interpreter and make its executable available on PATH.',
+    macos: 'brew install lua'
+  },
+  love: {
+    label: 'LÖVE', url: 'https://love2d.org/',
+    instructions: 'Install a current LÖVE release and add its command-line executable to PATH.'
+  },
   zig: {
     label: 'Zig', url: 'https://ziglang.org/download/',
     instructions: 'Download the latest stable Zig release and add the directory containing zig to PATH.',
@@ -314,6 +359,27 @@ async function findPackageManager(dirs, platform) {
   }
 }
 
+async function findAndroidTools({ env, home, platform }) {
+  const defaultSdk = platform === 'win32' && env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, 'Android', 'Sdk') :
+    platform === 'darwin' ? path.join(home, 'Library', 'Android', 'sdk') : path.join(home, 'Android', 'Sdk');
+  const roots = [env.ANDROID_HOME, env.ANDROID_SDK_ROOT, defaultSdk].filter(root => root && path.isAbsolute(root));
+  const exists = file => fs.access(file).then(() => true, () => false);
+  const exe = name => platform === 'win32' ? name + '.exe' : name;
+  for (const root of new Set(roots)) {
+    const platformFiles = ['android-37.0', 'android-37'].map(id => path.join(root, 'platforms', id, 'android.jar'));
+    const buildTools = path.join(root, 'build-tools', '37.0.0', exe('aapt2'));
+    const ndk = path.join(root, 'ndk', '28.2.13676358', 'build', 'cmake', 'android.toolchain.cmake');
+    const cmake = path.join(root, 'cmake', '3.31.6', 'bin', exe('cmake'));
+    const [rootExists, modern, legacy, build, native, cmakeFound] = await Promise.all(
+      [root, ...platformFiles, buildTools, ndk, cmake].map(exists));
+    if (rootExists) return {
+      'android-sdk': (modern || legacy) && build ? { version: '37', file: root } : undefined,
+      'android-ndk': native ? { version: '28.2.13676358', file: ndk } : undefined,
+      'android-cmake': cmakeFound ? { version: '3.31.6', file: cmake } : undefined
+    };
+  }
+}
+
 async function detectToolchains(settings = system) {
   const { platform, env, home } = settings;
   const fromPath = pathDirectories(env);
@@ -341,7 +407,21 @@ async function detectToolchains(settings = system) {
   const cmakeDir = studio && path.join(studio.installation, 'Common7', 'IDE', 'CommonExtensions', 'Microsoft', 'CMake', 'CMake', 'bin');
   const condaRoots = ['miniforge3', 'miniconda3', 'anaconda3'].flatMap(folder =>
     [home, env.LOCALAPPDATA, env.ProgramData, '/opt'].filter(Boolean).map(root => path.join(root, folder)));
-  const [uv, conda, virtualenv, rustc, cargo, go, swift, javac, kotlin, zig, node, npm, cmake, compiler, cpp, cuda, qt, manager] = await Promise.all([
+  const rubyDirs = [bin(env.RUBY_HOME), path.join(home, '.rbenv', 'shims')];
+  const additionalTools = Promise.all([
+    probe(['ruby'], ['--version'], /\bruby (\d+\.\d+\.\d+)/, rubyDirs),
+    probe(['bundle', 'bundler'], ['--version'], /\bBundler version (\d+\.\d+\.\d+)/i, rubyDirs),
+    probe(['php'], ['--version'], /\bPHP (\d+\.\d+\.\d+)/, env.PHP_HOME),
+    probe(['lua', 'lua5.5', 'lua5.4', 'lua5.3', 'lua5.2', 'lua5.1', 'lua55', 'lua54', 'lua53', 'luajit'],
+      ['-v'], /\bLua(?:JIT)? (\d+\.\d+(?:\.\d+)?)/, env.LUA_HOME),
+    probe(windows ? ['lovec', 'love'] : ['love'], ['--version'], /\bL[OÖ]VE (\d+\.\d+(?:\.\d+)?)/i,
+      [windows && programFiles && path.join(programFiles, 'LOVE'), mac && '/Applications/love.app/Contents/MacOS']),
+    probe(['gradle'], ['--version'], /\bGradle (\d+\.\d+(?:\.\d+)?)/,
+      [bin(env.GRADLE_HOME), path.join(home, '.sdkman', 'candidates', 'gradle', 'current', 'bin')]),
+    findAndroidTools(settings)
+  ]);
+  const [uv, conda, virtualenv, rustc, cargo, go, swift, javac, kotlin, zig, node, npm, cmake, compiler, cpp, cuda, qt, manager,
+    [ruby, bundler, php, lua, love, gradle, android]] = await Promise.all([
     probe(['uv'], ['--version'], /\buv (\d+\.\d+\.\d+)/, [path.join(home, '.cargo', 'bin')]),
     probe(['conda'], ['--version'], /\bconda (\d+\.\d+(?:\.\d+)?)/, [
       env.CONDA_EXE && path.dirname(env.CONDA_EXE),
@@ -362,7 +442,8 @@ async function detectToolchains(settings = system) {
     !studio && !appleSdk ? probe(['clang++', 'g++', 'c++'], ['--version'], /(\d+\.\d+(?:\.\d+)?)/, [], file => mac && file === '/usr/bin/clang++') : undefined,
     !mac ? probe(['nvcc'], ['--version'], /\bV(\d+\.\d+\.\d+)/, [bin(env.CUDA_PATH), ...cudaInstallations, '/usr/local/cuda/bin']) : undefined,
     findQt(settings, common),
-    findPackageManager(common, platform)
+    findPackageManager(common, platform),
+    additionalTools
   ]);
   const pythonVersions = await findPythonVersions(directories(pythonInstallations,
     env.VIRTUAL_ENV && path.join(env.VIRTUAL_ENV, windows ? 'Scripts' : 'bin'),
@@ -386,6 +467,11 @@ async function detectToolchains(settings = system) {
     'apple-sdk': appleSdk,
     java: javac && javaRuntime ? javac : undefined,
     kotlin,
+    gradle: gradle && { ...gradle, usable: atLeast(gradle.version, 9) && !atLeast(gradle.version, 9, 8) },
+    'android-gradle': requireVersion(gradle, 9, 3, 1),
+    'android-xr-gradle': requireVersion(gradle, 9, 5),
+    ...android,
+    ruby: requireVersion(ruby, 3), bundler, php: requireVersion(php, 8), lua, love: requireVersion(love, 11),
     zig,
     node: requireVersion(node, 18),
     'vite-node': node && supportsVite(node.version) ? node : undefined,

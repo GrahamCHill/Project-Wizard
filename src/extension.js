@@ -276,7 +276,8 @@ function activate(context) {
         options: projectOptions(template, detected, pythonVersions),
         disabled: Boolean((template.needsSdk && !sdk.version) || (template.kind === 'react-native' && !template.ready))
       })),
-      detected: Object.entries(detected).filter(([id, result]) => !['vite-node', 'expo-node', 'react-native-node'].includes(id) && result)
+      detected: Object.entries(detected).filter(([id, result]) =>
+        !['vite-node', 'expo-node', 'react-native-node', 'android-gradle', 'android-xr-gradle'].includes(id) && result)
         .map(([id, result]) => ({ label: toolchains[id].label, ...result }))
         .sort((a, b) => a.label.localeCompare(b.label)),
       sdkVersion: sdk.version, sdkError: sdk.error, monoError, monoCount: mono.length,

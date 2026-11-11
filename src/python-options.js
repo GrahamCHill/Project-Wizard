@@ -9,14 +9,13 @@ const environments = [
   { id: 'venv', label: 'venv (built-in)', tool: 'python' },
   { id: 'uv', label: 'uv', tool: 'uv' },
   { id: 'conda', label: 'Conda', tool: 'conda' },
-  { id: 'virtualenv', label: 'virtualenv', tool: 'virtualenv' },
-  { id: 'none', label: 'Existing Python environment' }
+  { id: 'virtualenv', label: 'virtualenv', tool: 'virtualenv' }
 ];
 
-function parsePythonOptions(input, lines, testing) {
+function parsePythonOptions(input, lines, framework) {
   const environment = environments.find(item => item.id === (input.environment || 'venv'));
   if (!environment) throw new Error('Choose a Python environment manager.');
-  const version = environment.id !== 'none' && typeof input.pythonVersion === 'string' ? input.pythonVersion.trim() : '';
+  const version = typeof input.pythonVersion === 'string' ? input.pythonVersion.trim() : '';
   if (version && !/^3\.(?:[89]|[1-9]\d+)(?:\.\d+)?$/.test(version)) {
     throw new Error('Enter a Python version such as 3.13 or 3.13.2. Python 3.8 or newer is supported.');
   }
@@ -28,9 +27,8 @@ function parsePythonOptions(input, lines, testing) {
     if (packages.has(name)) throw new Error('Duplicate Python package: ' + name);
     packages.set(name, line);
   }
-  const pytest = testing && !packages.has('pytest') ? (version.startsWith('3.8') ? 'pytest<8.4' : 'pytest') : undefined;
-  return { environment: environment.id, version, packages: [...packages.values()], pytest, testing,
-    createNow: input.createEnvironment === true && environment.id !== 'none' };
+  const pytest = framework === 'pytest' && !packages.has('pytest') ? (version.startsWith('3.8') ? 'pytest<8.4' : 'pytest') : undefined;
+  return { environment: environment.id, version, packages: [...packages.values()], pytest, framework };
 }
 
 function selectPython(options, tools, versions, template) {
@@ -46,11 +44,11 @@ function selectPython(options, tools, versions, template) {
 }
 
 async function preparePython(project, template, name, options) {
-  const { environment, version, packages, pytest, testing } = options;
+  const { environment, version, packages, pytest, framework } = options;
   const requirements = [...packages, ...(pytest ? [pytest] : [])];
   const readme = ['# ' + name, '', template.description, ''];
   const setup = [];
-  let runner = 'python3';
+  let runner;
 
   if (environment === 'uv') {
     const dependencies = packages.map(value => JSON.stringify(value)).join(', ');
@@ -70,12 +68,9 @@ async function preparePython(project, template, name, options) {
     runner = 'conda run --prefix ./.venv python';
   } else {
     const minorVersion = version.split('.').slice(0, 2).join('.');
-    if (environment !== 'none') {
-      const module = environment === 'virtualenv' ? 'virtualenv' : 'venv';
-      setup.push('python' + (minorVersion || '3') + ' -m ' + module + ' .venv');
-      setup.push('# macOS / Linux: source .venv/bin/activate', '# Windows PowerShell: .\\.venv\\Scripts\\Activate.ps1');
-      runner = 'python';
-    }
+    setup.push('python' + (minorVersion || '3') + ' -m ' + environment + ' .venv');
+    setup.push('# macOS / Linux: source .venv/bin/activate', '# Windows PowerShell: .\\.venv\\Scripts\\Activate.ps1');
+    runner = 'python';
     if (requirements.length) {
       await fs.writeFile(path.join(project, 'requirements.txt'), requirements.join('\n') + '\n', { flag: 'wx' });
       setup.push(runner + ' -m pip install -r requirements.txt');
@@ -88,17 +83,32 @@ async function preparePython(project, template, name, options) {
   if (setup.length) readme.push('## Set up', '', '~~~sh', ...setup, '~~~', '');
   readme.push('## Run', '', '~~~sh', ...template.commands.map(command => command.replace(/^python3\b/, runner)), '~~~', '');
   if (template.id === 'python-server') readme.push('Open http://127.0.0.1:8080 after starting the development server.', '');
-  if (testing) {
+  if (framework) {
     await fs.mkdir(path.join(project, 'tests'));
-    await fs.writeFile(path.join(project, 'tests', 'test_example.py'),
-      'def add(left: int, right: int) -> int:\n    return left + right\n\n\ndef test_add():\n    assert add(2, 3) == 5\n', { flag: 'wx' });
-    readme.push('## Tests', '', '~~~sh', runner + ' -m pytest', '~~~', '');
+    const sample = 'def add(left: int, right: int) -> int:\n    return left + right\n';
+    const source = framework === 'pytest' ? sample + '\n\ndef test_add():\n    assert add(2, 3) == 5\n' :
+      'import unittest\n\n\n' + sample + '\n\nclass ExampleTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n';
+    await fs.writeFile(path.join(project, 'tests', 'test_example.py'), source, { flag: 'wx' });
+    const command = framework === 'pytest' ? 'pytest' : 'unittest discover -s tests';
+    readme.push('## Tests', '', '~~~sh', runner + ' -m ' + command, '~~~', '');
   }
   await fs.writeFile(path.join(project, 'README.md'), readme.join('\n'));
+  const editorSettings = { 'python.defaultInterpreterPath': '${workspaceFolder}/.venv' };
+  if (framework) {
+    editorSettings['python.testing.pytestEnabled'] = framework === 'pytest';
+    editorSettings['python.testing.unittestEnabled'] = framework === 'unittest';
+    if (framework === 'unittest') editorSettings['python.testing.unittestArgs'] = ['-s', 'tests'];
+  }
+  const vscode = path.join(project, '.vscode');
+  await fs.mkdir(vscode);
+  await fs.writeFile(path.join(vscode, 'settings.json'), JSON.stringify(editorSettings, null, 2) + '\n', { flag: 'wx' });
 }
 
 async function setupPython(project, options, runtime, log) {
   const { environment, version, packages, pytest } = options;
+  const pythonRelative = process.platform !== 'win32' ? 'bin/python' :
+    environment === 'conda' ? 'python.exe' : 'Scripts/python.exe';
+  const interpreter = path.join(project, '.venv', pythonRelative);
   async function run(file, args) {
     log?.(path.basename(file) + ' ' + args.join(' '));
     const settings = {
@@ -125,10 +135,13 @@ async function setupPython(project, options, runtime, log) {
       await run(runtime.file, ['-m', environment, '.venv']);
     }
     if (packages.length || pytest) {
-      const interpreter = process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python';
-      await run(path.join(project, '.venv', interpreter), ['-m', 'pip', 'install', '-r', 'requirements.txt']);
+      await run(interpreter, ['-m', 'pip', 'install', '-r', 'requirements.txt']);
     }
   }
+  if (!(await fs.stat(interpreter).catch(() => undefined))?.isFile()) {
+    throw new Error('The environment manager did not create a Python interpreter inside .venv.');
+  }
+  if (options.tkinter) await run(interpreter, ['-I', '-c', 'import tkinter']);
 }
 
 module.exports = { environments, parsePythonOptions, preparePython, selectPython, setupPython };

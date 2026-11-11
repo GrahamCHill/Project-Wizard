@@ -1,6 +1,6 @@
 # __PROJECT_NAME__
 
-A desktop Raylib project using C and CMake. Install CMake 3.24+, a C compiler,
+A desktop Raylib project using __NATIVE_LABEL__ and CMake. Install CMake 3.24+, a compatible compiler,
 and the [system libraries for your platform](https://github.com/raysan5/raylib/wiki#development-platforms).
 
 ```sh

@@ -82,6 +82,11 @@ const toolchains = {
     instructions: 'Install the current Node.js LTS release. Expo SDK 57 requires Node.js 22.13 or newer.',
     windows: 'winget install --exact --id OpenJS.NodeJS.LTS'
   },
+  'react-native-node': {
+    label: 'Node.js for React Native', url: 'https://nodejs.org/en/download',
+    instructions: 'Install Node.js 22.13+ on the 22.x line, 24.3+ on the 24.x line, or Node.js 26 or newer.',
+    windows: 'winget install --exact --id OpenJS.NodeJS.LTS'
+  },
   npm: {
     label: 'npm', url: 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm',
     instructions: 'Install the current Node.js LTS distribution with npm included.'
@@ -97,6 +102,18 @@ const toolchains = {
   'qt-quick': {
     label: 'Qt 6 Quick', url: 'https://doc.qt.io/qt-6/qt-online-installation.html',
     instructions: 'Install a Qt 6.5 or newer desktop kit with Qt Quick and set CMAKE_PREFIX_PATH to its kit folder.'
+  },
+  'wx-gtk': {
+    label: 'wxWidgets or GTK 3 development files', url: 'https://www.wxwidgets.org/docs/faq/linux/',
+    instructions: 'Install wxWidgets development files, or install GTK 3 development files so CMake can build wxWidgets.'
+  },
+  'sdl-desktop': {
+    label: 'SDL desktop development files', url: 'https://wiki.libsdl.org/SDL3/README-linux',
+    instructions: 'Install the SDL development prerequisites for your Linux distribution, including an X11 or Wayland desktop backend.'
+  },
+  'opengl-dev': {
+    label: 'OpenGL development files', url: 'https://docs.mesa3d.org/install.html',
+    instructions: 'Install your Linux distribution’s desktop OpenGL development package.'
   },
   cuda: {
     label: 'NVIDIA CUDA Toolkit', url: 'https://developer.nvidia.com/cuda-downloads',
@@ -191,6 +208,11 @@ function atLeast(version, ...minimum) {
 
 function supportsVite(version) {
   return (version.startsWith('20.') && atLeast(version, 20, 19)) || atLeast(version, 22, 12);
+}
+
+function supportsReactNative(version) {
+  return (version.startsWith('22.') && atLeast(version, 22, 13)) ||
+    (version.startsWith('24.') && atLeast(version, 24, 3)) || atLeast(version, 26);
 }
 
 function requireVersion(tool, ...minimum) {
@@ -350,6 +372,11 @@ async function detectToolchains(settings = system) {
   const javaRuntime = javac && await detectExecutable(['java'], ['-version'], /version "(\d+(?:\.\d+)*)/, [path.dirname(javac.file), ...javaDirs], settings, file => mac && file === '/usr/bin/java');
   const systemCompiler = studio ? { version: 'MSVC', file: studio.file } : appleSdk ? { version: 'Apple Clang', file: appleSdk.file } : undefined;
   const virtualenvRuntime = pythonVersions.find(runtime => runtime.usable && runtime.virtualenv);
+  const pkgConfig = (module) => probe(['pkg-config', 'pkgconf'], ['--modversion', module], /^(\d+(?:\.\d+)*)/);
+  const [wx, gtk, x11, wayland, gl] = platform === 'linux' ? await Promise.all([
+    probe(['wx-config'], ['--version'], /^(\d+\.\d+\.\d+)/),
+    pkgConfig('gtk+-3.0'), pkgConfig('x11'), pkgConfig('wayland-client'), pkgConfig('gl')
+  ]) : [];
   const results = {
     python, uv, conda, virtualenv: virtualenv || virtualenvRuntime && { version: 'Python module', file: virtualenvRuntime.file },
     tkinter: tk && { version: 'with Python ' + tk.version, file: tk.file },
@@ -363,10 +390,14 @@ async function detectToolchains(settings = system) {
     node: requireVersion(node, 18),
     'vite-node': node && supportsVite(node.version) ? node : undefined,
     'expo-node': requireVersion(node, 22, 13),
+    'react-native-node': node && supportsReactNative(node.version) ? node : undefined,
     npm,
     cmake: requireVersion(cmake, 3, 24),
     'c-compiler': systemCompiler || compiler,
     'cpp-compiler': systemCompiler || cpp,
+    'wx-gtk': wx || gtk,
+    'sdl-desktop': x11 || wayland,
+    'opengl-dev': gl,
     cuda,
     ...qt
   };
@@ -392,8 +423,9 @@ function templateAvailability(template, tools, platform, manager) {
   const available = { ...tools };
   if (template.language === 'Python' && (tools.uv || tools.conda)) available.python = { usable: true };
   if (template.language === 'Python' && tools.conda) available.tkinter = { usable: true };
-  const missing = (template.tools || []).filter(id => !available[id] || available[id].usable === false).map(id => getSetup(id, platform, manager));
+  const required = [...(template.tools || []), ...(template.platformTools?.[platform] || [])];
+  const missing = required.filter(id => !available[id] || available[id].usable === false).map(id => getSetup(id, platform, manager));
   return { ready: supported && missing.length === 0, supported, missing };
 }
 
-module.exports = { detectToolchains, getSetup, supportsVite, templateAvailability, templatesForPlatform, toolchains };
+module.exports = { detectToolchains, getSetup, supportsReactNative, supportsVite, templateAvailability, templatesForPlatform, toolchains };

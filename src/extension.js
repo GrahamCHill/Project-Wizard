@@ -10,6 +10,7 @@ const { starters, writeStarter } = require('./starters');
 const { detectToolchains, getSetup, templateAvailability, templatesForPlatform, toolchains } = require('./toolchains');
 const { applyProjectOptions, projectOptions, readProjectOptions } = require('./project-options');
 const { selectPython, setupPython } = require('./python-options');
+const { createReactNativeProject } = require('./react-native');
 const { extractZipTemplate, listZipTemplates } = require('./zip-templates');
 
 const configurationKey = 'projectWizard.zipTemplatesDirectory';
@@ -85,6 +86,7 @@ function wizardHtml(webview, extensionUri) {
           <button type="button" data-group="cli" aria-pressed="false">Command Line</button>
           <button type="button" data-group="desktop" aria-pressed="false">Desktop</button>
           <button type="button" data-group="mobile" aria-pressed="false">Mobile</button>
+          <button type="button" data-group="graphics" aria-pressed="false">Graphics</button>
           <button type="button" data-group="frontend" aria-pressed="false">Web Frontend</button>
           <button type="button" data-group="server" aria-pressed="false">Web Server</button>
           <button type="button" data-group="monogame" aria-pressed="false">MonoGame</button>
@@ -155,7 +157,6 @@ function wizardHtml(webview, extensionUri) {
                   <input id="python-version" type="text" list="python-versions" maxlength="16" placeholder="Default">
                   <datalist id="python-versions"></datalist>
                 </div>
-                <label class="option-check"><input id="create-environment" type="checkbox"> Create the environment now</label>
                 <p id="python-environment-help"></p>
                 <button id="python-manager-guide" type="button" class="secondary" hidden>Open setup guide</button>
               </div>
@@ -166,6 +167,10 @@ function wizardHtml(webview, extensionUri) {
                 <p class="option-hint">One dependency per line.</p>
               </div>
               <label id="testing-option" class="option-check" hidden><input id="testing" type="checkbox"> <span id="testing-label"></span></label>
+              <div id="test-framework-field" hidden>
+                <label for="test-framework">Test framework</label>
+                <select id="test-framework"></select>
+              </div>
             </fieldset>
           </details>
           <p id="error" class="error" role="alert" hidden></p>
@@ -234,9 +239,10 @@ function activate(context) {
       templates: templates.map(template => ({
         id: template.id, group: template.group, label: template.label, language: template.language,
         description: template.description, requirement: template.requirement, ready: template.ready, missing: template.missing,
-        options: projectOptions(template, detected, pythonVersions), disabled: Boolean(template.needsSdk && !sdk.version)
+        options: projectOptions(template, detected, pythonVersions),
+        disabled: Boolean((template.needsSdk && !sdk.version) || (template.kind === 'react-native' && !template.ready))
       })),
-      detected: Object.entries(detected).filter(([id, result]) => !['vite-node', 'expo-node'].includes(id) && result)
+      detected: Object.entries(detected).filter(([id, result]) => !['vite-node', 'expo-node', 'react-native-node'].includes(id) && result)
         .map(([id, result]) => ({ label: toolchains[id].label, ...result }))
         .sort((a, b) => a.label.localeCompare(b.label)),
       sdkVersion: sdk.version, sdkError: sdk.error, monoError, monoCount: mono.length,
@@ -248,9 +254,9 @@ function activate(context) {
     const template = session.templates.get(message.templateId);
     if (!template) throw new Error('Select a template from the list.');
     const options = readProjectOptions(template, message.options);
-    const python = options?.createNow && selectPython(options, session.tools, session.pythonVersions, template);
-    if (options?.createNow && !python) {
-      throw new Error('The selected Python version or environment manager is unavailable. Check the setup options or create the project without provisioning the environment.');
+    const python = options?.type === 'python' && selectPython(options, session.tools, session.pythonVersions, template);
+    if (options?.type === 'python' && !python) {
+      throw new Error('Python projects require a virtual environment. Install the selected version or choose a different environment manager.');
     }
     if (message.openMode === 'workspace' && !vscode.workspace.getWorkspaceFolder(vscode.Uri.file(message.location))) {
       throw new Error('Choose a location inside the current workspace, or change After creation.');
@@ -259,14 +265,12 @@ function activate(context) {
       location: vscode.ProgressLocation.Notification, title: 'Creating project…'
     }, () => createProject(message.location, message.name, async (project, parent) => {
       if (template.kind === 'dotnet') await createDotnetProject(template, message.name, project, parent, log);
-      if (template.kind === 'starter') {
-        await writeStarter(template, message.name, project, parent, log);
-        await applyProjectOptions(project, template, message.name, options);
-      }
+      if (template.kind === 'starter') await writeStarter(template, message.name, project, parent, log);
+      if (template.kind === 'react-native') await createReactNativeProject(message.name, project, session.tools, log);
       if (template.kind === 'zip') await extractZipTemplate(template.archive, project, message.name);
+      await applyProjectOptions(project, template, message.name, options, parent, log);
     }, log));
 
-    let setupError;
     if (python) {
       try {
         await vscode.window.withProgress({
@@ -274,16 +278,11 @@ function activate(context) {
         }, () => setupPython(destination, options, python, log));
       } catch (error) {
         log(error.message);
-        setupError = 'Created ' + destination + '. Python environment setup failed. See Project Wizard output and the generated README for setup commands.';
+        throw new Error('Python environment setup failed at ' + destination + '. The folder contains the starter files. See Project Wizard output and the generated README to finish setup.');
       }
     }
     const summary = `Created ${destination}.${template.next ? ` ${template.next}` : ''}`;
-    if (setupError) {
-      reportError(session, new Error(setupError));
-      if (message.openMode === 'current' || message.openMode === 'new') void vscode.window.showWarningMessage(setupError);
-    } else {
-      await send(session, { type: 'success', message: summary });
-    }
+    await send(session, { type: 'success', message: summary });
     if (message.openMode === 'new' || message.openMode === 'current') {
       try {
         await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(destination), {
@@ -294,7 +293,7 @@ function activate(context) {
       }
     } else if (message.openMode === 'workspace') {
       await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(path.join(message.location, message.name)));
-    } else if (!setupError && active !== session) {
+    } else if (active !== session) {
       void vscode.window.showInformationMessage(summary);
     }
   }

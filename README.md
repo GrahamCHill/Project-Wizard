@@ -12,7 +12,7 @@ npm test
 npm run package
 ```
 
-The build writes `project-wizard-0.3.0.vsix` in this folder. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
+The build writes `project-wizard-0.4.0.vsix` in this folder. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
 
 For development, open this folder in VS Code and press `F5` to start the **Run Project Wizard** Extension Development Host. Open the wizard in that window to test the source directly.
 
@@ -31,22 +31,25 @@ To scaffold inside your current workspace, use **Project Wizard: New Project in 
 | Category | Examples |
 | --- | --- |
 | Command line | C and C++ with CMake, CUDA kernel and library, Python, Rust, Go, Swift, Java, Kotlin/JVM, Zig, and .NET |
-| Desktop | Qt Widgets and Qt Quick with CMake, Python Tkinter, Java and Kotlin Swing, macOS SwiftUI and AppKit, and Windows Forms |
-| Mobile | Expo React Native for Android and iOS |
+| Desktop | Qt Widgets, Qt Quick, and wxWidgets with CMake, Python Tkinter, Java and Kotlin Swing, macOS SwiftUI and AppKit, and Windows Forms |
+| Mobile | React Native for Android and iOS with Expo or the Community CLI |
+| Graphics | SDL2, SDL3, and SDL3 with OpenGL 3.3 in C and C++ |
 | Web frontend | Static HTML/CSS/JavaScript and TypeScript with Vite |
 | Web server | Python, Rust with Axum, Go, Java, Kotlin/JVM, Node.js, and ASP.NET Core |
-| Games | MonoGame and Raylib for C or C# |
+| Games | MonoGame and Raylib for C, C++, or C# |
 
 The generated README provides build and run commands. Use a Qt kit that matches your C++ compiler and set `CMAKE_PREFIX_PATH` to that kit. CUDA projects require the NVIDIA CUDA Toolkit and a supported host compiler. Running a CUDA sample also needs a compatible GPU and driver. Expo uses Node.js 22.13 or newer and a compatible Expo SDK 57 client or development build. [Qt setup](https://doc.qt.io/qt-6/qt-online-installation.html) · [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) · [Expo device setup](https://docs.expo.dev/get-started/set-up-your-environment/)
 
 MonoGame and built-in .NET generators require an active .NET SDK 8 or newer. Use **MonoGame → Install MonoGame templates** if the project templates are missing.
 
+The React Native Community CLI starter downloads the official Android and iOS project files, including a Jest sample. Use the generated README to install dependencies, configure the platform SDK, and run the app. [React Native environment setup](https://reactnative.dev/docs/set-up-your-environment)
+
 ## Project setup
 
-- **Python** offers built-in `venv`, `uv`, Conda, `virtualenv`, and an existing environment. Choose an installed interpreter version or enter a version for uv or Conda to provision. The wizard writes `pyproject.toml`, `environment.yml`, or `requirements.txt` as appropriate. Check **Create the environment now** to provision the project-local `.venv` and install its selected packages. Leave it clear to generate setup instructions and dependency files for later.
+- **Python** requires a project-local `.venv`. Choose built-in `venv`, `uv`, Conda, or `virtualenv` and select a Python version. The wizard creates the environment and installs the selected packages before opening the project. If setup fails, the generated README and Project Wizard output show how to finish setup.
 - **CMake** offers curated libraries and accepts custom archive dependencies. The format is `name target https://example.com/library.tar.gz [sha256]`, one dependency per line. The generated project uses `FetchContent` to obtain and link the dependencies when you configure the build.
 - **npm** starters accept one dependency per line, for example `@scope/package@^1.0.0`. The selected packages go into `package.json`.
-- **Tests** are optional. C++ and CUDA can include GoogleTest, C can include a CTest executable, and Python can include pytest. The Node.js, Go, Rust, and Zig starters also offer an example test. Follow the generated README to run it.
+- **Tests** are optional. C can use CTest, C++ and CUDA can use GoogleTest or Catch2, Python can use pytest or `unittest`, and JavaScript and TypeScript can use the Node.js test runner or Vitest where supported. C# offers xUnit and NUnit, Java and Kotlin offer JUnit with Maven, and Swift packages offer XCTest. Go, Rust, and Zig offer their native test runners. Follow the generated README to run the example.
 
 ## Custom ZIP templates
 

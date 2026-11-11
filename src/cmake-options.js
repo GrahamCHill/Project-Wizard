@@ -17,7 +17,8 @@ function cmakeLibraries(template) {
 
 function parseCmakeLibraries(template, chosen, lines) {
   const selected = cmakeLibraries(template).filter(library => chosen.includes(library.id));
-  const names = new Set(['app', 'game', 'raylib', 'googletest', 'example_test', ...selected.map(library => library.id)]);
+  const names = new Set(['app', 'game', 'raylib', 'sdl2', 'sdl3', 'wxwidgets', 'googletest', 'catch2', 'example_test',
+    ...selected.map(library => library.id)]);
   for (const line of lines) {
     const [id, target, url, hash, extra] = line.split(/\s+/);
     if (!/^[a-z][a-z0-9_-]*$/.test(id) ||
@@ -45,8 +46,50 @@ function declare(library) {
   ];
 }
 
-async function writeCmakeOptions(project, template, libraries, testing) {
-  if (!libraries.length && !testing) return;
+const cppTestTarget = [
+  'add_executable(example_test tests/example_test.cpp)',
+  'target_compile_features(example_test PRIVATE cxx_std_17)'
+];
+const testExamples = {
+  ctest: {
+    file: 'example_test.c',
+    cmake: [
+      'add_executable(example_test tests/example_test.c)',
+      'target_compile_features(example_test PRIVATE c_std_11)',
+      'add_test(NAME example_test COMMAND example_test)'
+    ],
+    source: 'static int add(int left, int right)\n{\n    return left + right;\n}\n\nint main(void)\n{\n    return add(2, 3) == 5 ? 0 : 1;\n}\n'
+  },
+  gtest: {
+    file: 'example_test.cpp',
+    cmake: [
+      'include(FetchContent)',
+      'set(gtest_force_shared_crt ON CACHE BOOL "Match the parent project runtime" FORCE)',
+      ...declare({ id: 'googletest', url: 'https://github.com/google/googletest/archive/refs/tags/v1.18.0.tar.gz' }),
+      'FetchContent_MakeAvailable(googletest)',
+      ...cppTestTarget,
+      'target_link_libraries(example_test PRIVATE GTest::gtest_main)',
+      'include(GoogleTest)',
+      'gtest_discover_tests(example_test DISCOVERY_MODE PRE_TEST)'
+    ],
+    source: '#include <gtest/gtest.h>\n\nnamespace {\nint add(int left, int right)\n{\n    return left + right;\n}\n}\n\nTEST(Example, AddsTwoNumbers)\n{\n    EXPECT_EQ(add(2, 3), 5);\n}\n'
+  },
+  catch2: {
+    file: 'example_test.cpp',
+    cmake: [
+      'include(FetchContent)',
+      ...declare({ id: 'catch2', url: 'https://github.com/catchorg/Catch2/archive/refs/tags/v3.11.0.tar.gz' }),
+      'FetchContent_MakeAvailable(catch2)',
+      ...cppTestTarget,
+      'target_link_libraries(example_test PRIVATE Catch2::Catch2WithMain)',
+      'add_test(NAME example_test COMMAND example_test)'
+    ],
+    source: '#include <catch2/catch_test_macros.hpp>\n\nnamespace {\nint add(int left, int right)\n{\n    return left + right;\n}\n}\n\nTEST_CASE("adds two numbers")\n{\n    REQUIRE(add(2, 3) == 5);\n}\n'
+  }
+};
+
+async function writeCmakeOptions(project, template, libraries, framework) {
+  if (!libraries.length && !framework) return;
   const lines = [];
   if (libraries.length) {
     lines.push('include(FetchContent)');
@@ -55,33 +98,15 @@ async function writeCmakeOptions(project, template, libraries, testing) {
         'target_link_libraries(' + template.cmakeTarget + ' PRIVATE ' + library.target + ')', '');
     }
   }
-  if (testing) {
-    const isC = template.language === 'C';
+  if (framework) {
+    const example = testExamples[framework];
     lines.push('include(CTest)', 'if(BUILD_TESTING)');
-    const testLines = isC ? [
-      'add_executable(example_test tests/example_test.c)',
-      'target_compile_features(example_test PRIVATE c_std_11)',
-      'add_test(NAME example_test COMMAND example_test)'
-    ] : [
-      'include(FetchContent)',
-      'set(gtest_force_shared_crt ON CACHE BOOL "Match the parent project runtime" FORCE)',
-      ...declare({ id: 'googletest', url: 'https://github.com/google/googletest/archive/refs/tags/v1.18.0.tar.gz' }),
-      'FetchContent_MakeAvailable(googletest)',
-      'add_executable(example_test tests/example_test.cpp)',
-      'target_compile_features(example_test PRIVATE cxx_std_17)',
-      'target_link_libraries(example_test PRIVATE GTest::gtest_main)',
-      'include(GoogleTest)',
-      'gtest_discover_tests(example_test DISCOVERY_MODE PRE_TEST)'
-    ];
-    lines.push(...testLines.map(line => '    ' + line), 'endif()', '');
+    lines.push(...example.cmake.map(line => '    ' + line), 'endif()', '');
     const tests = path.join(project, 'tests');
     await fs.mkdir(tests);
-    const source = isC ?
-      'static int add(int left, int right)\n{\n    return left + right;\n}\n\nint main(void)\n{\n    return add(2, 3) == 5 ? 0 : 1;\n}\n' :
-      '#include <gtest/gtest.h>\n\nnamespace {\nint add(int left, int right)\n{\n    return left + right;\n}\n}\n\nTEST(Example, AddsTwoNumbers)\n{\n    EXPECT_EQ(add(2, 3), 5);\n}\n';
-    await fs.writeFile(path.join(tests, isC ? 'example_test.c' : 'example_test.cpp'), source, { flag: 'wx' });
+    await fs.writeFile(path.join(tests, example.file), example.source, { flag: 'wx' });
     await fs.appendFile(path.join(project, 'README.md'),
-      '\n## Tests\n\nConfigure and build with the commands above, then run:\n\n' +
+      '\n## Tests\n\nRun CTest after configuring and building the project.\n\n' +
       '~~~sh\nctest --test-dir build -C Debug --output-on-failure\n~~~\n\n' +
       'Use CMake’s -DBUILD_TESTING=OFF option for a build without tests.\n');
   }

@@ -10,11 +10,12 @@ const locationInput = byId('location');
 const openMode = byId('open-mode');
 const projectSetup = byId('project-options');
 const environmentSelect = byId('python-environment');
-const environmentNow = byId('create-environment');
+const pythonVersion = byId('python-version');
+const testFramework = byId('test-framework');
 const errorMessage = byId('error');
 const operation = byId('operation');
 const groupTitles = {
-  all: 'Templates', cli: 'Command Line', desktop: 'Desktop', mobile: 'Mobile', frontend: 'Web Frontend', server: 'Web Server',
+  all: 'Templates', cli: 'Command Line', desktop: 'Desktop', mobile: 'Mobile', graphics: 'Graphics', frontend: 'Web Frontend', server: 'Web Server',
   monogame: 'MonoGame', raylib: 'Raylib', zip: 'Custom ZIPs'
 };
 
@@ -69,21 +70,32 @@ function renderSetup(template) {
   }
 }
 
-function pythonEnvironmentChanged() {
+function pythonEnvironmentReady() {
   const options = optionTemplate?.options;
+  if (options?.type !== 'python') return true;
   const environment = options?.environments?.find(item => item.id === environmentSelect.value);
-  const existing = environment?.id === 'none';
-  const unavailable = !existing && !environment?.available;
-  environmentNow.disabled = existing || unavailable;
-  if (environmentNow.disabled) environmentNow.checked = false;
-  byId('python-version-field').hidden = existing;
+  const version = pythonVersion.value.trim();
+  const local = ['venv', 'virtualenv'].includes(environment?.id);
+  const versionMissing = local && version && !environment.versions.some(value =>
+    value === version || value.startsWith(version + '.'));
+  const unavailable = !environment?.available;
   const help = byId('python-environment-help');
-  help.textContent = unavailable ? 'Setup is required before the wizard can create this environment.' :
-    ['uv', 'conda'].includes(environment?.id) ? 'The manager can install the requested Python version.' : '';
-  help.hidden = !help.textContent;
+  help.textContent = unavailable ? 'Install the selected environment manager or choose another one.' :
+    versionMissing ? 'Install this Python version or choose uv or Conda to download it.' :
+    'Project Wizard creates .venv and installs the selected packages.';
   const guide = byId('python-manager-guide');
   guide.hidden = !unavailable || !environment?.tool;
   guide.dataset.toolId = environment?.tool || '';
+  return !unavailable && !versionMissing;
+}
+
+function updateVersionSuggestions() {
+  const environment = optionTemplate?.options?.environments?.find(item => item.id === environmentSelect.value);
+  byId('python-versions').replaceChildren(...(environment?.versions || []).map(version => new Option(version)));
+}
+
+function updateTestFrameworkField() {
+  byId('test-framework-field').hidden = !byId('testing').checked || (optionTemplate?.options?.frameworks?.length || 0) < 2;
 }
 
 function renderProjectOptions(template) {
@@ -97,8 +109,7 @@ function renderProjectOptions(template) {
     projectSetup.open = true;
     byId('dependencies').value = '';
     byId('testing').checked = false;
-    byId('python-version').value = '';
-    environmentNow.checked = false;
+    pythonVersion.value = '';
   }
   byId('python-options').hidden = options.type !== 'python';
   if (options.type === 'python') {
@@ -106,8 +117,7 @@ function renderProjectOptions(template) {
     environmentSelect.replaceChildren(...options.environments.map(item =>
       new Option(item.label + (item.available === false ? ' (setup needed)' : ''), item.id)));
     environmentSelect.value = environment || options.defaultEnvironment;
-    byId('python-versions').replaceChildren(...options.versions.map(version => new Option(version)));
-    pythonEnvironmentChanged();
+    updateVersionSuggestions();
   }
 
   const choices = byId('library-choices');
@@ -129,15 +139,20 @@ function renderProjectOptions(template) {
   byId('dependencies').placeholder = options.example || '';
   byId('testing-option').hidden = !options.test;
   byId('testing-label').textContent = options.test || '';
+  const previousFramework = preserve ? testFramework.value : '';
+  const frameworks = options.frameworks || [];
+  testFramework.replaceChildren(...frameworks.map(item => new Option(item.label, item.id)));
+  if (frameworks.some(item => item.id === previousFramework)) testFramework.value = previousFramework;
+  updateTestFrameworkField();
 }
 
 function selectedOptions() {
   if (!optionTemplate?.options) return;
   return {
     environment: environmentSelect.value,
-    pythonVersion: byId('python-version').value,
-    createEnvironment: environmentNow.checked,
+    pythonVersion: pythonVersion.value,
     testing: byId('testing').checked,
+    framework: testFramework.value,
     dependencies: byId('dependencies').value,
     libraries: [...byId('library-choices').querySelectorAll('input:checked')].map(input => input.value)
   };
@@ -164,7 +179,8 @@ function updateForm() {
     button.setAttribute('aria-pressed', String(button.dataset.id === selected));
   }
 
-  byId('create').disabled = pending || !template || template.disabled || !name.trim() || !location;
+  const environmentReady = pythonEnvironmentReady();
+  byId('create').disabled = pending || !template || template.disabled || !name.trim() || !location || !environmentReady;
   byId('refresh').disabled = pending || loading;
   for (const control of [nameInput, locationInput, openMode, byId('browse'), byId('choose-zip'), byId('install')]) {
     control.disabled = pending;
@@ -282,7 +298,12 @@ list.addEventListener('click', event => {
 search.addEventListener('input', updateCatalog);
 languageSelect.addEventListener('change', updateCatalog);
 readyOnly.addEventListener('change', updateCatalog);
-environmentSelect.addEventListener('change', pythonEnvironmentChanged);
+environmentSelect.addEventListener('change', () => {
+  updateVersionSuggestions();
+  updateForm();
+});
+pythonVersion.addEventListener('input', updateForm);
+byId('testing').addEventListener('change', updateTestFrameworkField);
 byId('python-manager-guide').addEventListener('click', () => {
   vscode.postMessage({ type: 'setupGuide', toolId: byId('python-manager-guide').dataset.toolId });
 });

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(__PROJECT_IDENTIFIER__ LANGUAGES C)
+project(__PROJECT_IDENTIFIER__ LANGUAGES __CMAKE_LANGUAGE__)
 
 include(FetchContent)
 set(BUILD_EXAMPLES OFF CACHE BOOL "Build Raylib examples")
@@ -10,7 +10,7 @@ FetchContent_Declare(raylib
 )
 FetchContent_MakeAvailable(raylib)
 
-add_executable(game src/main.c)
-target_compile_features(game PRIVATE c_std_99)
+add_executable(game src/main.__NATIVE_EXTENSION__)
+target_compile_features(game PRIVATE __NATIVE_STANDARD__)
 target_link_libraries(game PRIVATE raylib)
 set_target_properties(game PROPERTIES OUTPUT_NAME "__PROJECT_NAME__")

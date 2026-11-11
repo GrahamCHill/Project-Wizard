@@ -3,6 +3,14 @@ const path = require('node:path');
 const { getSdk, replaceTokens } = require('./projects');
 const { standardTemplates } = require('./standard-templates');
 
+const raylibC = {
+  id: 'raylib-c', group: 'raylib', kind: 'starter', label: 'Raylib for C', language: 'C',
+  description: 'A desktop window and game loop with a CMake build.', tools: ['cmake', 'c-compiler'], cmakeTarget: 'game',
+  requirement: 'CMake 3.24+ and a C compiler. CMake can fetch Raylib during configuration.',
+  next: 'Follow the build commands in README.md.',
+  files: ['CMakeLists.txt', 'src/main.c', 'gitignore', 'README.md']
+};
+
 const starters = [
   {
     id: 'raylib-csharp', group: 'raylib', kind: 'starter', label: 'Raylib for C#', language: 'C#',
@@ -11,12 +19,10 @@ const starters = [
     next: 'Run dotnet run from the project folder.',
     files: ['__PROJECT_NAME__.csproj', 'Program.cs', 'gitignore', 'README.md']
   },
+  raylibC,
   {
-    id: 'raylib-c', group: 'raylib', kind: 'starter', label: 'Raylib for C', language: 'C',
-    description: 'A desktop window and game loop with a CMake build.', tools: ['cmake', 'c-compiler'], cmakeTarget: 'game',
-    requirement: 'CMake 3.24+ and a C compiler. CMake can fetch Raylib during configuration.',
-    next: 'Follow the build commands in README.md.',
-    files: ['CMakeLists.txt', 'src/main.c', 'gitignore', 'README.md']
+    ...raylibC, id: 'raylib-cpp', label: 'Raylib for C++', language: 'C++', sourceDirectory: raylibC.id,
+    tools: ['cmake', 'cpp-compiler'], requirement: 'CMake 3.24+ and a C++ compiler. CMake can fetch Raylib during configuration.'
   },
   {
     id: 'dotnet-console', group: 'cli', kind: 'dotnet', label: '.NET Console App',
@@ -45,12 +51,17 @@ const starters = [
 
 async function writeStarter(template, name, project, parent, log) {
   const sdk = template.needsSdk ? await getSdk(parent, log) : undefined;
-  const templateRoot = path.join(__dirname, '..', 'templates', template.id);
+  const templateRoot = path.join(__dirname, '..', 'templates', template.sourceDirectory || template.id);
+  const cpp = template.language === 'C++';
   for (const file of template.files) {
     const contents = await fs.readFile(path.join(templateRoot, file), 'utf8');
-    const target = path.join(project, replaceTokens(file === 'gitignore' ? '.gitignore' : file, name));
+    const output = file === 'gitignore' ? '.gitignore' : template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
+    const target = path.join(project, replaceTokens(output, name));
     await fs.mkdir(path.dirname(target), { recursive: true });
-    await fs.writeFile(target, replaceTokens(contents, name, sdk?.major), { flag: 'wx' });
+    const rendered = file === 'CMakeLists.txt' ? contents.replaceAll('__CMAKE_LANGUAGE__', cpp ? 'CXX' : 'C')
+      .replaceAll('__NATIVE_EXTENSION__', cpp ? 'cpp' : 'c').replaceAll('__NATIVE_STANDARD__', cpp ? 'cxx_std_17' : 'c_std_99') : contents;
+    const source = rendered.replaceAll('__NATIVE_LABEL__', cpp ? 'C++' : 'C');
+    await fs.writeFile(target, replaceTokens(source, name, sdk?.major), { flag: 'wx' });
   }
   if (template.commands) {
     const commands = template.commands.length ? ['```sh', ...template.commands, '```', ''] : [];

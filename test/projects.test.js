@@ -8,10 +8,11 @@ const { test } = require('node:test');
 const { ZipFile } = require('yazl');
 const { createProject, detectFrameworks, parseMonoGameTemplates, validateProjectName } = require('../src/projects');
 const { starters, writeStarter } = require('../src/starters');
-const { getSetup, supportsVite, templateAvailability, templatesForPlatform } = require('../src/toolchains');
+const { getSetup, supportsReactNative, supportsVite, templateAvailability, templatesForPlatform } = require('../src/toolchains');
 const { applyProjectOptions, projectOptions, readProjectOptions } = require('../src/project-options');
 const { selectPython } = require('../src/python-options');
 const { extractZipTemplate, listZipTemplates } = require('../src/zip-templates');
+const { reactNativeIdentifier } = require('../src/react-native');
 
 async function fixture(t) {
   const temp = await fs.realpath(os.tmpdir());
@@ -122,7 +123,8 @@ test('generates the bundled source templates with portable names and run instruc
     await fs.mkdir(parent);
     const project = await createProject(parent, name, (target, directory) => writeStarter(template, name, target, directory));
     for (const file of template.files) {
-      const generated = path.join(project, file === 'gitignore' ? '.gitignore' : file);
+      const output = file === 'gitignore' ? '.gitignore' : template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
+      const generated = path.join(project, output);
       assert.doesNotMatch(await fs.readFile(generated, 'utf8'), /__PROJECT_[A-Z]+__/);
     }
     const readme = await fs.readFile(path.join(project, 'README.md'), 'utf8');
@@ -216,6 +218,8 @@ test('writes Python manager-specific configuration and resolves installed interp
     assert.match(await fs.readFile(path.join(project, configFile), 'utf8'), configPattern);
     assert.ok((await fs.readFile(path.join(project, 'README.md'), 'utf8')).includes(command));
     assert.ok(await fs.stat(path.join(project, 'tests', 'test_example.py')));
+    const settings = JSON.parse(await fs.readFile(path.join(project, '.vscode', 'settings.json'), 'utf8'));
+    assert.equal(settings['python.defaultInterpreterPath'], '${workspaceFolder}/.venv');
     assert.ok(selectPython(options, { uv: { file: 'uv' }, conda: { file: 'conda' } }, [runtime], template));
   }
   assert.throws(() => readProjectOptions(template, { dependencies: '-r untrusted.txt' }), /Python package/);
@@ -238,4 +242,74 @@ test('preserves mobile dependencies and adds selected npm packages and tests', a
   assert.equal(manifest.dependencies.lodash, '^4.17.21');
   assert.equal(manifest.scripts.test, 'node --test');
   assert.ok(await fs.stat(path.join(project, 'tests', 'example.test.mjs')));
+});
+
+test('pairs every C starter with a C++ CMake build', async t => {
+  const root = await fixture(t);
+  const cTemplates = starters.filter(template => template.language === 'C');
+  assert.ok(cTemplates.length >= 5);
+  for (const c of cTemplates) {
+    const cppId = c.id === 'c-cmake' ? 'cpp-cmake' : c.id.replace(/-c$/, '-cpp');
+    const cpp = starters.find(template => template.id === cppId);
+    assert.equal(cpp?.language, 'C++');
+    assert.equal(cpp?.group, c.group);
+    for (const [template, language, suffix] of [[c, 'C', 'c'], [cpp, 'CXX', 'cpp']]) {
+      const project = await createProject(root, template.id, (target, parent) =>
+        writeStarter(template, template.id, target, parent));
+      const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
+      assert.ok(cmake.includes('LANGUAGES ' + language + ')'));
+      assert.ok(cmake.includes('src/main.' + suffix));
+      assert.ok(await fs.stat(path.join(project, 'src', 'main.' + suffix)));
+    }
+  }
+});
+
+test('requires a Python environment manager and exposes only matching local interpreter versions', () => {
+  const template = starters.find(item => item.id === 'python-desktop');
+  const config = projectOptions(template, { uv: { file: 'uv' } }, [
+    { file: 'python1', version: '3.14.7', usable: true, tkinter: false },
+    { file: 'python2', version: '3.13.9', usable: true, tkinter: true }
+  ]);
+  assert.ok(config.environments.every(manager => manager.id !== 'none'));
+  assert.deepEqual(config.environments.find(manager => manager.id === 'venv').versions, ['3.13.9']);
+  assert.equal(config.defaultEnvironment, 'venv');
+  assert.throws(() => readProjectOptions(template, { environment: 'none' }), /environment manager/);
+  assert.equal(readProjectOptions(template, {}).environment, 'venv');
+});
+
+test('adds each alternative test framework to its starter', async t => {
+  const root = await fixture(t);
+  const examples = [
+    ['cpp-cmake', 'catch2', 'cmake/ProjectOptions.cmake', /Catch2::Catch2WithMain/],
+    ['python-cli', 'unittest', 'tests/test_example.py', /unittest.TestCase/],
+    ['typescript-frontend', 'vitest', 'package.json', /vitest run/],
+    ['java-cli', 'junit', 'tests/src/test/java/ExampleTest.java', /org.junit.jupiter/],
+    ['kotlin-cli', 'junit', 'tests/src/test/kotlin/ExampleTest.kt', /org.junit.jupiter/],
+    ['swift-cli', 'xctest', 'Package.swift', /\.testTarget\(name: "ExampleTests"\)/]
+  ];
+  for (const [id, framework, file, content] of examples) {
+    const template = starters.find(item => item.id === id);
+    const options = readProjectOptions(template, { testing: true, framework });
+    const project = await createProject(root, id, async (target, parent) => {
+      await writeStarter(template, id, target, parent);
+      await applyProjectOptions(target, template, id, options);
+    });
+    assert.match(await fs.readFile(path.join(project, file), 'utf8'), content);
+    if (framework === 'unittest') await assert.rejects(fs.stat(path.join(project, 'requirements.txt')), { code: 'ENOENT' });
+  }
+  const c = starters.find(item => item.id === 'c-cmake');
+  assert.throws(() => readProjectOptions(c, { testing: true, framework: 'nunit' }), /supported test framework/);
+  assert.equal(readProjectOptions(starters.find(item => item.id === 'dotnet-console'), { testing: true, framework: 'nunit' }).type, 'dotnet-tests');
+});
+
+test('offers both React Native starters with the native CLI Node versions', () => {
+  const mobile = starters.filter(template => template.group === 'mobile');
+  assert.deepEqual(mobile.map(template => template.kind), ['starter', 'react-native']);
+  assert.equal(reactNativeIdentifier('9 React-Native App'), 'App9ReactNativeApp');
+  assert.equal(supportsReactNative('22.12.0'), false);
+  assert.equal(supportsReactNative('22.13.0'), true);
+  assert.equal(supportsReactNative('24.2.9'), false);
+  assert.equal(supportsReactNative('24.3.0'), true);
+  assert.equal(supportsReactNative('25.1.0'), false);
+  assert.equal(supportsReactNative('26.0.0'), true);
 });

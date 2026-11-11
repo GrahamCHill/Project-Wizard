@@ -8,6 +8,11 @@ const { promisify } = require('node:util');
 const exec = promisify(execFile);
 
 const toolchains = {
+  git: {
+    label: 'Git', url: 'https://git-scm.com/install/',
+    instructions: 'Install Git and restart VS Code if the installer changes PATH.',
+    windows: 'winget install --exact --id Git.Git', macos: 'brew install git'
+  },
   dotnet: {
     label: '.NET SDK', url: 'https://dotnet.microsoft.com/download',
     instructions: 'Install the current .NET SDK for your operating system.'
@@ -434,6 +439,10 @@ async function detectToolchains(settings = system) {
     [home, env.LOCALAPPDATA, env.ProgramData, '/opt'].filter(Boolean).map(root => path.join(root, folder)));
   const rubyDirs = [bin(env.RUBY_HOME), path.join(home, '.rbenv', 'shims')];
   const additionalTools = Promise.all([
+    probe(['git'], ['--version'], /\bgit version (\d+\.\d+\.\d+)/i, [
+      windows && programFiles && path.join(programFiles, 'Git', 'cmd'),
+      windows && env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs', 'Git', 'cmd')
+    ], file => /\.(?:cmd|bat)$/i.test(file) || (mac && !appleSdk && file === '/usr/bin/git')),
     probe(['ruby'], ['--version'], /\bruby (\d+\.\d+\.\d+)/, rubyDirs),
     probe(['bundle', 'bundler'], ['--version'], /\bBundler version (\d+\.\d+\.\d+)/i, rubyDirs),
     probe(['php'], ['--version'], /\bPHP (\d+\.\d+\.\d+)/, env.PHP_HOME),
@@ -446,7 +455,7 @@ async function detectToolchains(settings = system) {
     findAndroidTools(settings)
   ]);
   const [uv, conda, virtualenv, rustc, cargo, go, swift, javac, kotlin, zig, node, npm, cmake, compiler, cpp, cuda, qt, manager,
-    [ruby, bundler, php, lua, love, gradle, android], vulkanSdk] = await Promise.all([
+    [git, ruby, bundler, php, lua, love, gradle, android], vulkanSdk] = await Promise.all([
     probe(['uv'], ['--version'], /\buv (\d+\.\d+\.\d+)/, [path.join(home, '.cargo', 'bin')]),
     probe(['conda'], ['--version'], /\bconda (\d+\.\d+(?:\.\d+)?)/, [
       env.CONDA_EXE && path.dirname(env.CONDA_EXE),
@@ -485,6 +494,7 @@ async function detectToolchains(settings = system) {
     pkgConfig('gtk+-3.0'), pkgConfig('x11'), pkgConfig('wayland-client'), pkgConfig('gl')
   ]) : [];
   const results = {
+    git,
     python, uv, conda, virtualenv: virtualenv || virtualenvRuntime && { version: 'Python module', file: virtualenvRuntime.file },
     tkinter: tk && { version: 'with Python ' + tk.version, file: tk.file },
     rust: rustc && cargo && { ...rustc, version: rustc.version + ' / Cargo ' + cargo.version },

@@ -1,10 +1,12 @@
 const assert = require('node:assert/strict');
+const { execFile } = require('node:child_process');
 const { createWriteStream } = require('node:fs');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
 const { test } = require('node:test');
+const { promisify } = require('node:util');
 const { ZipFile } = require('yazl');
 const { createProject, detectFrameworks, parseMonoGameTemplates, validateProjectName } = require('../src/projects');
 const { starters, writeStarter } = require('../src/starters');
@@ -14,6 +16,9 @@ const { selectPython } = require('../src/python-options');
 const { extractZipTemplate, listZipTemplates } = require('../src/zip-templates');
 const { reactNativeIdentifier } = require('../src/react-native');
 const { enabledTemplates, readCatalogSettings } = require('../src/catalog');
+const { gitProjectStatus, initializeProjectGit } = require('../src/git-project');
+
+const exec = promisify(execFile);
 
 async function fixture(t) {
   const temp = await fs.realpath(os.tmpdir());
@@ -112,6 +117,38 @@ test('two simultaneous requests cannot replace the same project folder', async t
   const winner = attempts[0].status === 'fulfilled' ? 'first' : 'second';
   assert.equal(await fs.readFile(path.join(parent, 'SameName', 'file'), 'utf8'), winner);
   assert.deepEqual(await fs.readdir(parent), ['SameName']);
+});
+
+test('defaults to Git init outside a repository and allows explicit overrides', async t => {
+  if (!await exec('git', ['--version']).catch(() => undefined)) {
+    t.skip('Git is unavailable');
+    return;
+  }
+  const root = await fixture(t);
+  const git = 'git';
+  const create = (parent, name, choice) => createProject(parent, name, (staged, actualParent) =>
+    initializeProjectGit(staged, actualParent, git, choice, message => t.diagnostic(message)));
+  assert.deepEqual(await gitProjectStatus(root, git), { available: true, validLocation: true, insideRepository: false });
+  const outside = await create(root, 'Standalone');
+  assert.equal((await fs.stat(path.join(outside, '.git'))).isDirectory(), true);
+  const topLevel = (await exec(git, ['rev-parse', '--show-toplevel'], { cwd: outside })).stdout.trim();
+  assert.equal(await fs.realpath(topLevel), outside);
+
+  const noGit = await create(root, 'Opt out', false);
+  await assert.rejects(fs.stat(path.join(noGit, '.git')), { code: 'ENOENT' });
+  const subfolder = path.join(outside, 'projects');
+  await fs.mkdir(subfolder);
+  assert.equal((await gitProjectStatus(subfolder, git)).insideRepository, true);
+  const nested = await create(subfolder, 'Default inside');
+  await assert.rejects(fs.stat(path.join(nested, '.git')), { code: 'ENOENT' });
+  const optedIn = await create(subfolder, 'Explicit nested', true);
+  assert.equal((await fs.stat(path.join(optedIn, '.git'))).isDirectory(), true);
+
+  const worktree = path.join(root, 'Linked worktree');
+  await exec(git, ['init', '--quiet', '--separate-git-dir', path.join(root, 'Git metadata'), worktree]);
+  assert.equal((await fs.stat(path.join(worktree, '.git'))).isFile(), true);
+  assert.equal((await gitProjectStatus(worktree, git)).insideRepository, true);
+  assert.equal((await gitProjectStatus(worktree)).insideRepository, true);
 });
 
 test('generates the bundled source templates with portable names and run instructions', async t => {

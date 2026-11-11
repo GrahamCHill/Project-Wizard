@@ -13,6 +13,7 @@ const { selectPython, setupPython } = require('./python-options');
 const { createReactNativeProject } = require('./react-native');
 const { extractZipTemplate, listZipTemplates } = require('./zip-templates');
 const { readCatalogSettings, enabledTemplates } = require('./catalog');
+const { gitProjectStatus, initializeProjectGit } = require('./git-project');
 
 const configurationKey = 'projectWizard.zipTemplatesDirectory';
 const catalogKey = 'projectWizard.catalog';
@@ -152,6 +153,11 @@ function wizardHtml(webview, extensionUri) {
             <option value="workspace" id="workspace-mode" hidden>Keep in current workspace</option>
             <option value="none">Leave folder closed</option>
           </select>
+          <div class="git-options">
+            <label class="option-check"><input id="initialize-git" type="checkbox" aria-describedby="git-status" disabled> Initialize Git repository</label>
+            <p id="git-status" role="status" hidden></p>
+            <button id="git-setup-guide" type="button" class="secondary" hidden>Open Git setup guide</button>
+          </div>
           <details id="project-options" hidden>
             <summary>Project setup</summary>
             <fieldset id="option-fields">
@@ -305,6 +311,7 @@ function activate(context) {
       if (template.kind === 'react-native') await createReactNativeProject(message.name, project, session.tools, log);
       if (template.kind === 'zip') await extractZipTemplate(template.archive, project, message.name);
       await applyProjectOptions(project, template, message.name, options, parent, log);
+      await initializeProjectGit(project, parent, session.tools?.git?.file, message.initializeGit, log);
     }, log));
 
     if (python) {
@@ -337,6 +344,13 @@ function activate(context) {
   async function handleMessage(session, message) {
     if (!message || typeof message.type !== 'string' || active !== session) return;
     if (message.type === 'showOutput') return output.show(true);
+    if (message.type === 'checkGitLocation') {
+      const status = await gitProjectStatus(message.location, session.tools?.git?.file).catch(error => {
+        log(error.message);
+        return { error: 'Could not check this location for an existing Git repository.' };
+      });
+      return send(session, { type: 'gitLocation', requestId: message.requestId, ...status });
+    }
     if (session.busy) return;
     if (message.type === 'ready' || message.type === 'locationChanged' || message.type === 'refresh') {
       return refresh(session, message.location, message.type === 'refresh');

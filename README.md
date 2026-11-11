@@ -12,7 +12,7 @@ npm test
 npm run package
 ```
 
-The build writes `project-wizard-0.5.1.vsix` in this folder. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
+The build writes `project-wizard-0.5.2.vsix` in this folder. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
 
 For development, open this folder in VS Code and press `F5` to start the **Run Project Wizard** Extension Development Host. Open the wizard in that window to test the source directly.
 
@@ -23,6 +23,8 @@ For development, open this folder in VS Code and press `F5` to start the **Run P
 3. Set any **Project setup** options, choose where to open the result, and click **Create Project**.
 
 To scaffold inside your current workspace, use **Project Wizard: New Project in Workspace…** and select a workspace root if prompted. You can also right-click any folder in Explorer and select **New Project**. Both routes default to **Keep in current workspace**, which creates and reveals the project folder in Explorer.
+
+**Initialize Git repository** is on by default when Git is installed. It starts off inside an existing repository, including a linked worktree, and you can override the choice before creating the project. The wizard initializes the repository without making a commit.
 
 **Ready to use** is checked by default. Clear it to see starters that need setup. Select one to see its tool requirements and installation guides. Expand **Detected toolchains** to see installed versions and executable locations. Use **Refresh templates** after setup, and restart VS Code if your installer changed PATH. The catalog shows platform-specific starters on their supported systems.
 
@@ -77,12 +79,7 @@ Paths and UTF-8 text files up to 1 MiB can contain `__PROJECT_NAME__`, `__PROJEC
 
 Commit this folder to a GitHub repository with Actions enabled. The **Build Project Wizard** workflow in `.github/workflows/build.yml` runs on pushes, pull requests, and manual dispatch. It runs tests on Windows, macOS, and Linux, then packages a VSIX. Open a successful run in the **Actions** tab and download **project-wizard-vsix** from **Artifacts**.
 
-To publish a release, commit the version in `package.json` and `package-lock.json`, then push a matching tag such as `v0.5.1`. After the three test jobs pass, the workflow creates the GitHub release and attaches `project-wizard-0.5.1.vsix` under **Assets**. It attaches the VSIX to an existing release for the same tag if needed.
-
-```sh
-git tag v0.5.1
-git push origin v0.5.1
-```
+To publish a new version, update `package.json` and `package-lock.json` and push the commit to the default branch. After all three test jobs pass, the workflow creates a versioned release such as `v0.5.2` and attaches the VSIX under **Assets**. Each version belongs to one commit. Bump the version to publish later changes. You can also run the workflow manually on the default branch or push a tag matching the package version.
 
 ## Add more starters
 

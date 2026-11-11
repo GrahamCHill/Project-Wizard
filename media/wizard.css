@@ -179,6 +179,10 @@ form label:not(:first-child) { margin-top: 15px; }
 #option-fields label { display: block; margin: 0 0 5px; }
 #option-fields .option-check { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-weight: 400; }
 .option-check input { width: auto; height: auto; margin: 0; accent-color: var(--accent); }
+.git-options { margin-top: 16px; }
+.git-options .option-check { display: flex; align-items: center; gap: 6px; margin: 0; }
+#git-status { margin-top: 4px; color: var(--muted); font-size: 12px; }
+#git-setup-guide { margin-top: 6px; }
 #python-version-field { margin-top: 8px; }
 #python-options .option-check { margin-top: 7px; }
 .option-hint, #python-environment-help { color: var(--muted); font-size: 12px; }

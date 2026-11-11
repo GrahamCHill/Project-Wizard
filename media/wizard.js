@@ -8,6 +8,7 @@ const list = byId('template-list');
 const nameInput = byId('name');
 const locationInput = byId('location');
 const openMode = byId('open-mode');
+const initializeGit = byId('initialize-git');
 const projectSetup = byId('project-options');
 const environmentSelect = byId('python-environment');
 const pythonVersion = byId('python-version');
@@ -33,6 +34,11 @@ let editedLocation = false;
 let renderedSelection;
 let optionTemplate;
 let catalogDraft;
+let gitLocation;
+let gitStatus;
+let gitOverride;
+let gitRequest = 0;
+let gitTimer;
 
 function searchText(value) {
   return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
@@ -214,6 +220,18 @@ function selectedOptions() {
   };
 }
 
+function checkGitLocation(delay = 0) {
+  const location = locationInput.value.trim();
+  if (location !== gitLocation) gitOverride = undefined;
+  gitLocation = location;
+  gitStatus = undefined;
+  clearTimeout(gitTimer);
+  const requestId = ++gitRequest;
+  if (catalog && location) {
+    gitTimer = setTimeout(() => vscode.postMessage({ type: 'checkGitLocation', requestId, location }), delay);
+  }
+}
+
 function updateForm() {
   const template = visibleTemplates.find(item => item.id === selected);
   const location = locationInput.value.trim();
@@ -236,7 +254,17 @@ function updateForm() {
   }
 
   const environmentReady = pythonEnvironmentReady();
-  byId('create').disabled = pending || !template || template.disabled || !name.trim() || !location || !environmentReady;
+  const checkingGit = Boolean(catalog && location && !gitStatus);
+  const canInitialize = Boolean(gitStatus?.validLocation && gitStatus.available);
+  initializeGit.checked = canInitialize && (gitOverride ?? !gitStatus.insideRepository);
+  initializeGit.disabled = pending || !canInitialize;
+  const gitMessage = byId('git-status');
+  gitMessage.textContent = gitStatus?.error || (gitStatus?.insideRepository ? 'This location is inside an existing Git repository.' :
+    gitStatus?.validLocation && !gitStatus.available ? 'Git is required to initialize a repository.' : '');
+  gitMessage.hidden = !gitMessage.textContent;
+  byId('git-setup-guide').hidden = !gitStatus?.validLocation || gitStatus.available;
+  byId('git-setup-guide').disabled = pending;
+  byId('create').disabled = pending || checkingGit || !template || template.disabled || !name.trim() || !location || !environmentReady;
   byId('refresh').disabled = pending || loading;
   byId('settings').disabled = pending || !catalog;
   for (const control of [nameInput, locationInput, openMode, byId('browse'), byId('choose-zip'), byId('install')]) {
@@ -374,9 +402,12 @@ nameInput.addEventListener('input', () => {
 locationInput.addEventListener('input', () => {
   editedLocation = true;
   clearMessage();
+  checkGitLocation(180);
   updateForm();
 });
 locationInput.addEventListener('change', () => refresh('locationChanged'));
+initializeGit.addEventListener('change', () => { gitOverride = initializeGit.checked; });
+byId('git-setup-guide').addEventListener('click', () => vscode.postMessage({ type: 'setupGuide', toolId: 'git' }));
 byId('refresh').addEventListener('click', () => refresh());
 byId('settings').addEventListener('click', openSettings);
 byId('cancel-settings').addEventListener('click', () => settingsDialog.close());
@@ -416,7 +447,8 @@ byId('project-form').addEventListener('submit', event => {
   event.preventDefault();
   if (byId('create').disabled) return;
   startOperation('create', 'Creating project…', {
-    templateId: selected, name: nameInput.value, openMode: openMode.value, options: selectedOptions()
+    templateId: selected, name: nameInput.value, openMode: openMode.value, options: selectedOptions(),
+    initializeGit: gitStatus?.error ? false : gitOverride
   });
 });
 
@@ -429,6 +461,7 @@ window.addEventListener('message', ({ data }) => {
       byId('workspace-mode').hidden = !data.hasWorkspace;
       if (firstCatalog && data.openMode) openMode.value = data.openMode;
       if (!editedLocation && !locationInput.value) locationInput.value = data.parent;
+      checkGitLocation();
       byId('toolchain-status').textContent = data.detected.length ? `Detected toolchains (${data.detected.length})` : 'No toolchains detected';
       byId('toolchain-list').replaceChildren(...data.detected.map(tool => {
         const item = document.createElement('li');
@@ -447,6 +480,12 @@ window.addEventListener('message', ({ data }) => {
       if (data.openMode) openMode.value = data.openMode;
       editedLocation = true;
       clearMessage();
+      checkGitLocation();
+      updateForm();
+      break;
+    case 'gitLocation':
+      if (data.requestId !== gitRequest) break;
+      gitStatus = data;
       updateForm();
       break;
     case 'setupFeedback':

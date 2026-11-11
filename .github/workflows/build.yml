@@ -54,6 +54,7 @@ jobs:
           filename="project-wizard-$version.vsix"
           npm run package -- --out "$filename"
           echo "filename=$filename" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
           name: project-wizard-vsix
@@ -61,30 +62,60 @@ jobs:
           if-no-files-found: error
     outputs:
       filename: ${{ steps.vsix.outputs.filename }}
+      tag: ${{ steps.vsix.outputs.tag }}
 
   release:
     name: Publish GitHub release
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      (github.event_name == 'push' && github.ref_type == 'tag') ||
+      ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+       github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch)
     needs: package
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      group: release-${{ needs.package.outputs.tag }}
+      cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           name: project-wizard-vsix
       - name: Publish VSIX
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           VSIX: ${{ needs.package.outputs.filename }}
+          TAG: ${{ needs.package.outputs.tag }}
         run: |
-          if assets=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[] | select(.state == "uploaded") | .name'); then
-            if grep -Fxq -- "$VSIX" <<< "$assets"; then
-              echo "$VSIX is already attached to $GITHUB_REF_NAME."
+          target=$(git rev-parse HEAD)
+          if tagged=$(git rev-parse --verify --quiet "refs/tags/$TAG^{commit}"); then
+            if [[ "$tagged" != "$target" ]]; then
+              echo "$TAG already points to $tagged. Bump the package version to release this commit."
+              exit 0
+            fi
+            create_options=(--verify-tag)
+          else
+            create_options=(--target "$target")
+          fi
+          if release=$(gh release view "$TAG" --json assets,isDraft,targetCommitish); then
+            if [[ -z "$tagged" ]] && ! jq -e --arg commit "$target" '.targetCommitish == $commit' <<< "$release" >/dev/null; then
+              echo "The draft for $TAG targets a different commit." >&2
+              exit 1
+            fi
+            if jq -e --arg asset "$VSIX" 'any(.assets[]; .name == $asset and .state == "uploaded")' <<< "$release" >/dev/null; then
+              echo "$VSIX is already attached to $TAG."
             else
-              gh release upload "$GITHUB_REF_NAME" "$VSIX" --clobber
+              gh release upload "$TAG" "$VSIX" --clobber
+            fi
+            if jq -e '.isDraft' <<< "$release" >/dev/null; then
+              gh release edit "$TAG" --draft=false
             fi
           else
-            gh release create "$GITHUB_REF_NAME" "$VSIX" --verify-tag --generate-notes
+            gh release create "$TAG" "$VSIX" "${create_options[@]}" --generate-notes
           fi

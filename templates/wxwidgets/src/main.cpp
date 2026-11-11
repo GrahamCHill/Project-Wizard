@@ -1,3 +1,4 @@
+#include "starter.h"
 #include <wx/wx.h>
 
 class StarterApp final : public wxApp {
@@ -8,7 +9,7 @@ public:
         auto *panel = new wxPanel(window);
         auto *layout = new wxBoxSizer(wxVERTICAL);
         layout->AddStretchSpacer();
-        layout->Add(new wxStaticText(panel, wxID_ANY, "__PROJECT_NAME__"), 0, wxALIGN_CENTER);
+        layout->Add(new wxStaticText(panel, wxID_ANY, wxString::Format("2 + 3 = %d", starter_add(2, 3))), 0, wxALIGN_CENTER);
         layout->AddStretchSpacer();
         panel->SetSizer(layout);
         window->Centre();

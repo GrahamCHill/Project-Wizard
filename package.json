@@ -2,7 +2,7 @@
   "name": "project-wizard",
   "displayName": "Project Wizard",
   "description": "Create CLI, desktop, mobile, web, and game projects with local toolchain detection and custom ZIP templates.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "project-wizard-local",
   "private": true,
   "engines": {
@@ -53,6 +53,18 @@
           "default": "",
           "scope": "machine",
           "description": "Absolute path to the folder containing .zip project templates."
+        },
+        "projectWizard.catalog": {
+          "type": "object",
+          "scope": "application",
+          "description": "Choose which languages and templates appear in Project Wizard.",
+          "default": { "disabledLanguages": [], "disabledTemplates": [], "enableVrTemplates": false },
+          "additionalProperties": false,
+          "properties": {
+            "disabledLanguages": { "type": "array", "items": { "type": "string" }, "description": "Language names hidden in the catalog." },
+            "disabledTemplates": { "type": "array", "items": { "type": "string" }, "description": "Template IDs hidden in the catalog." },
+            "enableVrTemplates": { "type": "boolean", "description": "Show the optional VR template set." }
+          }
         }
       }
     }

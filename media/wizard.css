@@ -31,6 +31,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   gap: 16px;
   margin-bottom: 24px;
 }
+.header-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; }
 h1 { color: var(--vscode-editor-foreground); font-size: 32px; font-weight: 600; letter-spacing: -.035em; margin: 0; }
 h2 { color: var(--vscode-editor-foreground); font-size: 15px; font-weight: 600; margin: 0 0 16px; }
 p { line-height: 1.5; margin: 0; }
@@ -198,6 +199,34 @@ button.secondary { color: var(--vscode-button-secondaryForeground); background: 
 button.secondary:not(:disabled):hover { background: var(--vscode-button-secondaryHoverBackground); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
+#catalog-settings {
+  width: min(640px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--vscode-editor-background);
+}
+#catalog-settings::backdrop { background: rgb(0 0 0 / .45); }
+#settings-heading { margin-bottom: 6px; }
+#settings-form > p { color: var(--muted); }
+#settings-form .option-check { display: flex; align-items: center; gap: 7px; margin: 0; font-weight: 400; }
+#settings-form > .option-check { margin: 14px 0; }
+.settings-lists { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }
+.settings-lists fieldset { min-width: 0; margin: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; }
+.settings-lists legend { padding: 0 4px; }
+#settings-search { margin-bottom: 8px; }
+#settings-languages, #settings-templates {
+  display: grid;
+  gap: 8px;
+  max-height: min(32vh, 280px);
+  overflow-y: auto;
+  padding: 3px;
+}
+#settings-empty { color: var(--muted); }
+#settings-form #settings-error { margin-top: 8px; color: var(--vscode-errorForeground); }
+
 @media (max-width: 880px) {
   .wizard { padding: 28px 20px; }
   .workspace { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -213,4 +242,6 @@ button.secondary:not(:disabled):hover { background: var(--vscode-button-secondar
   .workspace { grid-template-columns: minmax(0, 1fr); }
   .details { border-inline-start: 0; }
   #template-list { max-height: min(37vh, 320px); }
+  .settings-lists { grid-template-columns: minmax(0, 1fr); }
+  #settings-languages { max-height: min(20vh, 140px); }
 }

@@ -1,5 +1,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include "starter.h"
 #include <stdio.h>
 
 int main(int argc, char **argv)
@@ -32,7 +33,7 @@ int main(int argc, char **argv)
 
         SDL_SetRenderDrawColor(renderer, 20, 30, 48, 255);
         SDL_RenderClear(renderer);
-        SDL_FRect rectangle = { 32.0f, 32.0f, 160.0f, 96.0f };
+        SDL_FRect rectangle = { 32.0f, 32.0f, (float)starter_add(96, 64), 96.0f };
         SDL_SetRenderDrawColor(renderer, 62, 177, 210, 255);
         SDL_RenderFillRect(renderer, &rectangle);
         SDL_RenderPresent(renderer);

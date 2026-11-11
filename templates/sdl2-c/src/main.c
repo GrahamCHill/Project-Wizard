@@ -1,5 +1,6 @@
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
+#include "starter.h"
 #include <stdio.h>
 
 int main(void)
@@ -38,7 +39,7 @@ int main(void)
 
         SDL_SetRenderDrawColor(renderer, 20, 30, 48, 255);
         SDL_RenderClear(renderer);
-        SDL_Rect rectangle = { 32, 32, 160, 96 };
+        SDL_Rect rectangle = { 32, 32, starter_add(96, 64), 96 };
         SDL_SetRenderDrawColor(renderer, 62, 177, 210, 255);
         SDL_RenderFillRect(renderer, &rectangle);
         SDL_RenderPresent(renderer);

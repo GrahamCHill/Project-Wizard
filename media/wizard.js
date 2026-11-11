@@ -14,9 +14,13 @@ const pythonVersion = byId('python-version');
 const testFramework = byId('test-framework');
 const errorMessage = byId('error');
 const operation = byId('operation');
+const settingsDialog = byId('catalog-settings');
+const settingsSearch = byId('settings-search');
+const settingsLanguages = byId('settings-languages');
+const settingsTemplates = byId('settings-templates');
 const groupTitles = {
   all: 'Templates', cli: 'Command Line', desktop: 'Desktop', mobile: 'Mobile', graphics: 'Graphics', frontend: 'Web Frontend', server: 'Web Server',
-  monogame: 'MonoGame', raylib: 'Raylib', zip: 'Custom ZIPs'
+  monogame: 'MonoGame', raylib: 'Raylib', zip: 'Custom ZIPs', vr: 'VR'
 };
 
 let catalog;
@@ -28,6 +32,54 @@ let loading = true;
 let editedLocation = false;
 let renderedSelection;
 let optionTemplate;
+let catalogDraft;
+
+function settingsCheckbox(value, text, checked) {
+  const label = document.createElement('label');
+  label.className = 'option-check';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.value = value;
+  input.checked = checked;
+  label.append(input, text);
+  return label;
+}
+
+function filterSettingsTemplates() {
+  const query = settingsSearch.value.trim().toLowerCase();
+  let matches = 0;
+  for (const label of settingsTemplates.children) {
+    label.hidden = !label.dataset.search.includes(query);
+    if (!label.hidden) matches++;
+  }
+  byId('settings-empty').hidden = matches > 0;
+}
+
+function openSettings() {
+  const { settings, availableTemplates } = catalog;
+  catalogDraft = {
+    disabledLanguages: new Set(settings.disabledLanguages),
+    disabledTemplates: new Set(settings.disabledTemplates)
+  };
+  byId('settings-error').hidden = true;
+  byId('enable-vr').checked = settings.enableVrTemplates;
+  settingsSearch.value = '';
+  const languages = [...new Set(availableTemplates.map(template => template.language).filter(Boolean))].sort();
+  settingsLanguages.replaceChildren(...languages.map(language =>
+    settingsCheckbox(language, language, !catalogDraft.disabledLanguages.has(language))));
+  const templates = [...availableTemplates].sort((a, b) => a.label.localeCompare(b.label));
+  settingsTemplates.replaceChildren(...templates.map(template => {
+    const label = settingsCheckbox(template.id, template.label, !catalogDraft.disabledTemplates.has(template.id));
+    label.dataset.search = `${template.label} ${template.language || ''} ${groupTitles[template.group] || ''}`.toLowerCase();
+    return label;
+  }));
+  filterSettingsTemplates();
+  settingsDialog.showModal();
+}
+
+function setSettingsSaving(saving) {
+  for (const control of settingsDialog.querySelectorAll('button, input')) control.disabled = saving;
+}
 
 function setupButton(label, action, toolId) {
   const button = document.createElement('button');
@@ -182,6 +234,7 @@ function updateForm() {
   const environmentReady = pythonEnvironmentReady();
   byId('create').disabled = pending || !template || template.disabled || !name.trim() || !location || !environmentReady;
   byId('refresh').disabled = pending || loading;
+  byId('settings').disabled = pending || !catalog;
   for (const control of [nameInput, locationInput, openMode, byId('browse'), byId('choose-zip'), byId('install')]) {
     control.disabled = pending;
   }
@@ -216,6 +269,9 @@ function templateButton(template) {
 }
 
 function updateCatalog() {
+  const showVr = catalog?.settings.enableVrTemplates === true;
+  categories.querySelector('[data-group="vr"]').hidden = !showVr;
+  if (!showVr && group === 'vr') group = 'all';
   byId('catalog-heading').textContent = groupTitles[group];
   for (const button of categories.querySelectorAll('button')) {
     button.setAttribute('aria-pressed', String(button.dataset.group === group));
@@ -318,6 +374,31 @@ locationInput.addEventListener('input', () => {
 });
 locationInput.addEventListener('change', () => refresh('locationChanged'));
 byId('refresh').addEventListener('click', () => refresh());
+byId('settings').addEventListener('click', openSettings);
+byId('cancel-settings').addEventListener('click', () => settingsDialog.close());
+settingsSearch.addEventListener('input', filterSettingsTemplates);
+for (const [list, key] of [[settingsLanguages, 'disabledLanguages'], [settingsTemplates, 'disabledTemplates']]) {
+  list.addEventListener('change', ({ target }) => {
+    const disabled = catalogDraft[key];
+    if (target.checked) disabled.delete(target.value);
+    else disabled.add(target.value);
+  });
+}
+settingsDialog.addEventListener('cancel', event => {
+  if (byId('save-settings').disabled) event.preventDefault();
+});
+byId('settings-form').addEventListener('submit', event => {
+  event.preventDefault();
+  if (byId('save-settings').disabled) return;
+  const settings = {
+    disabledLanguages: [...catalogDraft.disabledLanguages].sort(),
+    disabledTemplates: [...catalogDraft.disabledTemplates].sort(),
+    enableVrTemplates: byId('enable-vr').checked
+  };
+  setSettingsSaving(true);
+  byId('settings-error').hidden = true;
+  vscode.postMessage({ type: 'saveCatalogSettings', settings });
+});
 byId('browse').addEventListener('click', () => vscode.postMessage({ type: 'browse', location: locationInput.value.trim() }));
 byId('choose-zip').addEventListener('click', () => vscode.postMessage({ type: 'chooseZip' }));
 byId('show-output').addEventListener('click', () => vscode.postMessage({ type: 'showOutput' }));
@@ -367,6 +448,15 @@ window.addEventListener('message', ({ data }) => {
     case 'setupFeedback':
       byId('setup-feedback').textContent = data.message;
       byId('setup-feedback').hidden = false;
+      break;
+    case 'catalogSettingsSaved':
+      setSettingsSaving(false);
+      settingsDialog.close();
+      break;
+    case 'catalogSettingsError':
+      setSettingsSaving(false);
+      byId('settings-error').textContent = data.message;
+      byId('settings-error').hidden = false;
       break;
     case 'success':
       pending = false;

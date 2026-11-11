@@ -1,3 +1,4 @@
+#include "starter.h"
 #include "sum.hpp"
 #include <iostream>
 
@@ -11,5 +12,5 @@ int main()
     }
 
     std::cout << "__PROJECT_NAME__: 2 + 3 = " << result << '\n';
-    return result == 5 ? 0 : 1;
+    return result == starter_add(2, 3) ? 0 : 1;
 }

@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_opengl.h>
+#include "starter.h"
 #include <stdio.h>
 
 int main(int argc, char **argv)
@@ -18,7 +19,8 @@ int main(int argc, char **argv)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-    SDL_Window *window = SDL_CreateWindow("__PROJECT_NAME__", 800, 450,
+    const int windowWidth = starter_add(400, 400);
+    SDL_Window *window = SDL_CreateWindow("__PROJECT_NAME__", windowWidth, 450,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!window) {
         fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());

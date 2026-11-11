@@ -1,3 +1,4 @@
+#include "starter.h"
 #include <cuda_runtime.h>
 #include <cstdio>
 
@@ -28,5 +29,5 @@ int main()
     }
 
     std::printf("__PROJECT_NAME__: 2 + 3 = %d\n", result);
-    return result == 5 ? 0 : 1;
+    return result == starter_add(2, 3) ? 0 : 1;
 }

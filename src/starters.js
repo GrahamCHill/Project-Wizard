@@ -3,6 +3,10 @@ const path = require('node:path');
 const { getSdk, replaceTokens } = require('./projects');
 const { standardTemplates } = require('./standard-templates');
 
+async function readStarterText(file) {
+  return (await fs.readFile(file, 'utf8')).replaceAll('\r\n', '\n');
+}
+
 const raylibC = {
   id: 'raylib-c', group: 'raylib', kind: 'starter', label: 'Raylib for C', language: 'C',
   description: 'A desktop window and game loop with a CMake build.', tools: ['cmake', 'c-compiler'], cmakeTarget: 'game',
@@ -54,7 +58,7 @@ async function writeStarter(template, name, project, parent, log) {
   const templateRoot = path.join(__dirname, '..', 'templates', template.sourceDirectory || template.id);
   const cpp = template.language === 'C++';
   for (const file of template.files) {
-    const contents = await fs.readFile(path.join(templateRoot, file), 'utf8');
+    const contents = await readStarterText(path.join(templateRoot, file));
     const output = file === 'gitignore' ? '.gitignore' : template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
     const target = path.join(project, replaceTokens(output, name));
     await fs.mkdir(path.dirname(target), { recursive: true });
@@ -62,6 +66,20 @@ async function writeStarter(template, name, project, parent, log) {
       .replaceAll('__NATIVE_EXTENSION__', cpp ? 'cpp' : 'c').replaceAll('__NATIVE_STANDARD__', cpp ? 'cxx_std_17' : 'c_std_99') : contents;
     const source = rendered.replaceAll('__NATIVE_LABEL__', cpp ? 'C++' : 'C');
     await fs.writeFile(target, replaceTokens(source, name, sdk?.major), { flag: 'wx' });
+  }
+  if (template.cmakeTarget) {
+    const shared = path.join(__dirname, '..', 'templates', '_shared', 'native');
+    const implementation = template.language === 'C' ? 'src/starter.c' : 'src/starter.cpp';
+    await fs.mkdir(path.join(project, 'include'), { recursive: true });
+    await fs.writeFile(path.join(project, 'include', 'starter.h'),
+      await readStarterText(path.join(shared, 'starter.h')), { flag: 'wx' });
+    await fs.writeFile(path.join(project, implementation),
+      await readStarterText(path.join(shared, 'starter.c')), { flag: 'wx' });
+    await fs.appendFile(path.join(project, 'CMakeLists.txt'), `
+add_library(starter_logic STATIC ${implementation})
+target_include_directories(starter_logic PUBLIC "\${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_link_libraries(${template.cmakeTarget} PRIVATE starter_logic)
+`);
   }
   if (template.commands) {
     const commands = template.commands.length ? ['```sh', ...template.commands, '```', ''] : [];

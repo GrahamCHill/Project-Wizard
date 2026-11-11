@@ -17,7 +17,7 @@ function cmakeLibraries(template) {
 
 function parseCmakeLibraries(template, chosen, lines) {
   const selected = cmakeLibraries(template).filter(library => chosen.includes(library.id));
-  const names = new Set(['app', 'game', 'raylib', 'sdl2', 'sdl3', 'wxwidgets', 'googletest', 'catch2', 'example_test',
+  const names = new Set(['app', 'game', 'raylib', 'sdl2', 'sdl3', 'wxwidgets', 'googletest', 'catch2', 'example_test', 'starter_logic',
     ...selected.map(library => library.id)]);
   for (const line of lines) {
     const [id, target, url, hash, extra] = line.split(/\s+/);
@@ -56,9 +56,10 @@ const testExamples = {
     cmake: [
       'add_executable(example_test tests/example_test.c)',
       'target_compile_features(example_test PRIVATE c_std_11)',
+      'target_link_libraries(example_test PRIVATE starter_logic)',
       'add_test(NAME example_test COMMAND example_test)'
     ],
-    source: 'static int add(int left, int right)\n{\n    return left + right;\n}\n\nint main(void)\n{\n    return add(2, 3) == 5 ? 0 : 1;\n}\n'
+    source: '#include "starter.h"\n\nint main(void)\n{\n    return starter_add(2, 3) == 5 && starter_add(-2, 3) == 1 ? 0 : 1;\n}\n'
   },
   gtest: {
     file: 'example_test.cpp',
@@ -68,11 +69,11 @@ const testExamples = {
       ...declare({ id: 'googletest', url: 'https://github.com/google/googletest/archive/refs/tags/v1.18.0.tar.gz' }),
       'FetchContent_MakeAvailable(googletest)',
       ...cppTestTarget,
-      'target_link_libraries(example_test PRIVATE GTest::gtest_main)',
+      'target_link_libraries(example_test PRIVATE starter_logic GTest::gtest_main)',
       'include(GoogleTest)',
       'gtest_discover_tests(example_test DISCOVERY_MODE PRE_TEST)'
     ],
-    source: '#include <gtest/gtest.h>\n\nnamespace {\nint add(int left, int right)\n{\n    return left + right;\n}\n}\n\nTEST(Example, AddsTwoNumbers)\n{\n    EXPECT_EQ(add(2, 3), 5);\n}\n'
+    source: '#include "starter.h"\n#include <gtest/gtest.h>\n\nTEST(Starter, AddsTwoNumbers)\n{\n    EXPECT_EQ(starter_add(2, 3), 5);\n    EXPECT_EQ(starter_add(-2, 3), 1);\n}\n'
   },
   catch2: {
     file: 'example_test.cpp',
@@ -81,10 +82,10 @@ const testExamples = {
       ...declare({ id: 'catch2', url: 'https://github.com/catchorg/Catch2/archive/refs/tags/v3.11.0.tar.gz' }),
       'FetchContent_MakeAvailable(catch2)',
       ...cppTestTarget,
-      'target_link_libraries(example_test PRIVATE Catch2::Catch2WithMain)',
+      'target_link_libraries(example_test PRIVATE starter_logic Catch2::Catch2WithMain)',
       'add_test(NAME example_test COMMAND example_test)'
     ],
-    source: '#include <catch2/catch_test_macros.hpp>\n\nnamespace {\nint add(int left, int right)\n{\n    return left + right;\n}\n}\n\nTEST_CASE("adds two numbers")\n{\n    REQUIRE(add(2, 3) == 5);\n}\n'
+    source: '#include "starter.h"\n#include <catch2/catch_test_macros.hpp>\n\nTEST_CASE("adds two numbers")\n{\n    REQUIRE(starter_add(2, 3) == 5);\n    REQUIRE(starter_add(-2, 3) == 1);\n}\n'
   }
 };
 
@@ -106,7 +107,7 @@ async function writeCmakeOptions(project, template, libraries, framework) {
     await fs.mkdir(tests);
     await fs.writeFile(path.join(tests, example.file), example.source, { flag: 'wx' });
     await fs.appendFile(path.join(project, 'README.md'),
-      '\n## Tests\n\nRun CTest after configuring and building the project.\n\n' +
+      '\n## Tests\n\nThe app and test link the same implementation of `starter_add` in `src/`. Run CTest after configuring and building the project.\n\n' +
       '~~~sh\nctest --test-dir build -C Debug --output-on-failure\n~~~\n\n' +
       'Use CMake’s -DBUILD_TESTING=OFF option for a build without tests.\n');
   }

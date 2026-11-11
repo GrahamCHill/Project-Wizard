@@ -12,8 +12,10 @@ const { applyProjectOptions, projectOptions, readProjectOptions } = require('./p
 const { selectPython, setupPython } = require('./python-options');
 const { createReactNativeProject } = require('./react-native');
 const { extractZipTemplate, listZipTemplates } = require('./zip-templates');
+const { readCatalogSettings, enabledTemplates } = require('./catalog');
 
 const configurationKey = 'projectWizard.zipTemplatesDirectory';
+const catalogKey = 'projectWizard.catalog';
 const projectFiles = '**/{*.csproj,*.fsproj,*.vbproj,Directory.Packages.props,CMakeLists.txt}';
 const generatedFiles = '**/{.git,node_modules,bin,obj,build,.project-wizard-*}/**';
 
@@ -77,7 +79,10 @@ function wizardHtml(webview, extensionUri) {
   <main class="wizard">
     <header class="page-header">
       <h1>New Project</h1>
-      <button id="refresh" type="button" class="secondary">Refresh templates</button>
+      <div class="header-actions">
+        <button id="refresh" type="button" class="secondary">Refresh templates</button>
+        <button id="settings" type="button" class="secondary" disabled>Settings</button>
+      </div>
     </header>
     <div class="workspace">
       <aside class="sidebar">
@@ -87,6 +92,7 @@ function wizardHtml(webview, extensionUri) {
           <button type="button" data-group="desktop" aria-pressed="false">Desktop</button>
           <button type="button" data-group="mobile" aria-pressed="false">Mobile</button>
           <button type="button" data-group="graphics" aria-pressed="false">Graphics</button>
+          <button type="button" data-group="vr" aria-pressed="false" hidden>VR</button>
           <button type="button" data-group="frontend" aria-pressed="false">Web Frontend</button>
           <button type="button" data-group="server" aria-pressed="false">Web Server</button>
           <button type="button" data-group="monogame" aria-pressed="false">MonoGame</button>
@@ -183,6 +189,31 @@ function wizardHtml(webview, extensionUri) {
       </section>
     </div>
   </main>
+  <dialog id="catalog-settings" aria-labelledby="settings-heading">
+    <form id="settings-form">
+      <h2 id="settings-heading">Template settings</h2>
+      <p>Choose which languages and templates appear in Project Wizard.</p>
+      <label class="option-check"><input id="enable-vr" type="checkbox"> Enable VR templates</label>
+      <div class="settings-lists">
+        <fieldset>
+          <legend>Languages</legend>
+          <div id="settings-languages"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Templates</legend>
+          <label for="settings-search" class="visually-hidden">Search templates in settings</label>
+          <input id="settings-search" type="search" placeholder="Search templates" autocomplete="off">
+          <div id="settings-templates"></div>
+          <p id="settings-empty" hidden>No templates match your search.</p>
+        </fieldset>
+      </div>
+      <p id="settings-error" class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button id="cancel-settings" type="button" class="secondary">Cancel</button>
+        <button id="save-settings" type="submit">Save settings</button>
+      </div>
+    </form>
+  </dialog>
   <script nonce="${nonce}" src="${resource('wizard.js')}"></script>
 </body>
 </html>`;
@@ -226,7 +257,9 @@ function activate(context) {
     if (session.scan !== scan || active !== session) return;
 
     const detected = { ...results, dotnet: sdk.version ? { version: sdk.version, file: sdk.executable } : undefined };
-    const templates = templatesForPlatform([...mono, ...starters, ...zip.templates], process.platform).map(template => ({
+    const settings = readCatalogSettings(vscode.workspace.getConfiguration().get(catalogKey));
+    const availableTemplates = templatesForPlatform([...mono, ...starters, ...zip.templates], process.platform);
+    const templates = enabledTemplates(availableTemplates, settings).map(template => ({
       ...template, ...templateAvailability(template, detected, process.platform, manager)
     }));
     session.templates = new Map(templates.map(template => [template.id, template]));
@@ -236,6 +269,7 @@ function activate(context) {
     await send(session, {
       type: 'catalog', parent: session.parent, separator: path.sep, openMode: session.openMode,
       hasWorkspace: Boolean(vscode.workspace.workspaceFolders?.length),
+      settings, availableTemplates: availableTemplates.map(({ id, label, language, group }) => ({ id, label, language, group })),
       templates: templates.map(template => ({
         id: template.id, group: template.group, label: template.label, language: template.language,
         description: template.description, requirement: template.requirement, ready: template.ready, missing: template.missing,
@@ -252,7 +286,8 @@ function activate(context) {
 
   async function create(session, message) {
     const template = session.templates.get(message.templateId);
-    if (!template) throw new Error('Select a template from the list.');
+    const settings = readCatalogSettings(vscode.workspace.getConfiguration().get(catalogKey));
+    if (!template || !enabledTemplates([template], settings).length) throw new Error('Select a template from the list.');
     const options = readProjectOptions(template, message.options);
     const python = options?.type === 'python' && selectPython(options, session.tools, session.pythonVersions, template);
     if (options?.type === 'python' && !python) {
@@ -304,6 +339,17 @@ function activate(context) {
     if (session.busy) return;
     if (message.type === 'ready' || message.type === 'locationChanged' || message.type === 'refresh') {
       return refresh(session, message.location, message.type === 'refresh');
+    }
+    if (message.type === 'saveCatalogSettings') {
+      try {
+        await vscode.workspace.getConfiguration().update(catalogKey, readCatalogSettings(message.settings),
+          vscode.ConfigurationTarget.Global);
+        await send(session, { type: 'catalogSettingsSaved' });
+      } catch (error) {
+        log(error.message);
+        await send(session, { type: 'catalogSettingsError', message: error.message });
+      }
+      return;
     }
     if (message.type === 'setupGuide' || message.type === 'copyInstallCommand') {
       const setup = getSetup(message.toolId, process.platform, session.manager);
@@ -405,7 +451,7 @@ function activate(context) {
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
       const session = active;
-      if (session && event.affectsConfiguration(configurationKey)) {
+      if (session && (event.affectsConfiguration(configurationKey) || event.affectsConfiguration(catalogKey))) {
         void refresh(session).catch(error => reportError(session, error));
       }
     }),

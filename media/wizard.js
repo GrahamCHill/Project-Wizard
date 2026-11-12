@@ -225,6 +225,12 @@ function updateExecutableIcon(targets) {
 function updateDependencyField() {
   const options = optionTemplate?.options;
   byId('dependency-options').hidden = !options?.dependencies || (options.type === 'java' && buildChoiceSelect.value === 'jdk');
+  const native = !options?.targetChoice || selectedTargets().some(target => target.id === 'native');
+  const libraries = options?.libraries?.filter(library => native || !library.desktopOnly) || [];
+  byId('library-picker').hidden = !libraries.length;
+  byId('library-picker-label').textContent = options?.libraryLabel || 'Common libraries';
+  byId('library-choices').replaceChildren(new Option('Add a library…', ''),
+    ...libraries.map(library => new Option(library.label, library.id)));
 }
 
 function renderProjectOptions(template) {
@@ -267,25 +273,12 @@ function renderProjectOptions(template) {
     updateVersionSuggestions();
   }
 
-  const choices = byId('library-choices');
-  const checked = preserve ? new Set([...choices.querySelectorAll('input:checked')].map(input => input.value)) : new Set();
-  choices.replaceChildren();
-  for (const library of options.libraries || []) {
-    const label = document.createElement('label');
-    label.className = 'option-check';
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.value = library.id;
-    input.checked = checked.has(library.id);
-    label.append(input, library.label);
-    choices.append(label);
-  }
-  choices.hidden = !options.libraries?.length;
   updateDependencyField();
   byId('dependencies-label').textContent = options.dependencies || '';
   byId('dependencies').placeholder = options.example || '';
   byId('dependency-hint').textContent = options.requiredDependencies?.length ?
-    'Included packages: ' + options.requiredDependencies.join(', ') + '. Enter one additional package per line.' : 'One dependency per line.';
+    'Included packages: ' + options.requiredDependencies.join(', ') + '. Enter one additional package per line.' :
+    options.dependencyHint || 'One dependency per line.';
   byId('testing-option').hidden = !options.test;
   byId('testing-label').textContent = options.test || '';
   const previousFramework = preserve ? testFramework.value : '';
@@ -305,8 +298,7 @@ function selectedOptions() {
     pythonVersion: pythonVersion.value,
     testing: byId('testing').checked,
     framework: testFramework.value,
-    dependencies: byId('dependency-options').hidden ? '' : byId('dependencies').value,
-    libraries: [...byId('library-choices').querySelectorAll('input:checked')].map(input => input.value)
+    dependencies: byId('dependency-options').hidden ? '' : byId('dependencies').value
   };
 }
 
@@ -494,7 +486,20 @@ buildChoiceSelect.addEventListener('change', () => {
   updateDependencyField();
   updateForm();
 });
-targetChoices.addEventListener('change', updateForm);
+targetChoices.addEventListener('change', () => {
+  updateDependencyField();
+  updateForm();
+});
+byId('library-choices').addEventListener('change', event => {
+  const select = event.currentTarget;
+  const library = optionTemplate?.options?.libraries?.find(item => item.id === select.value);
+  select.value = '';
+  if (!library) return;
+  const dependencies = byId('dependencies');
+  const value = dependencies.value.trimEnd();
+  const exists = value.split('\n').some(line => line.trim().split(/\s+/, 1)[0].toLowerCase() === library.id);
+  if (!exists) dependencies.value = [value, library.line].filter(Boolean).join('\n');
+});
 executableIcon.addEventListener('change', updateForm);
 byId('choose-executable-icons').addEventListener('click', () => {
   clearMessage();

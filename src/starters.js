@@ -25,6 +25,15 @@ const starters = [
     next: 'Run dotnet run from the project folder.',
     files: ['__PROJECT_NAME__.csproj', 'Program.cs', 'gitignore', 'README.md']
   },
+  {
+    id: 'cpp-csharp-raylib', group: 'raylib', kind: 'starter', label: 'Raylib (C++ + C#)', language: 'C#',
+    description: 'A C# Raylib window that calls a CMake-built C++ library to move a circle.',
+    needsSdk: true, tools: ['dotnet', 'cmake', 'cpp-compiler'], nativeTarget: 'pw_native',
+    requirement: '.NET SDK 8+, CMake 3.24+, and a native C++ compiler for Windows, macOS, or Linux.',
+    next: 'Run dotnet run from the project folder.',
+    files: ['__PROJECT_NAME__.csproj', 'Program.cs', 'NativeMotion.cs', 'native/CMakeLists.txt', 'native/src/motion.cpp',
+      'native/README.md', 'gitignore', 'README.md']
+  },
   raylibC,
   {
     ...raylibC, id: 'raylib-cpp', label: 'Raylib for C++', language: 'C++', sourceDirectory: raylibC.id,

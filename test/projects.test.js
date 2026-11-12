@@ -332,6 +332,67 @@ test('writes CMake dependency declarations and opt-in C or GoogleTest examples',
   }
 });
 
+test('uses the CMake picker entries as editable dependencies and packages a Vulkan desktop app', async t => {
+  const root = await fixture(t);
+  const cpp = starters.find(template => template.id === 'sdl3-vulkan-cpp');
+  const c = starters.find(template => template.id === 'sdl3-vulkan-c');
+  const raylib = starters.find(template => template.id === 'raylib-cpp');
+  const choices = projectOptions(cpp).libraries;
+  const ids = ['tinyfiledialogs', 'imgui', 'bgfx', 'stb', 'cxxopts', 'glm', 'libuv'];
+  const lines = ids.map(id => choices.find(choice => choice.id === id).line);
+  assert.deepEqual(projectOptions(c).libraries.map(choice => choice.id), ['yyjson', 'stb', 'libuv', 'tinyfiledialogs']);
+  assert.throws(() => readProjectOptions(raylib, { dependencies: 'bgfx', targets: ['emscripten'] }), /desktop target/);
+  assert.throws(() => readProjectOptions(cpp, { dependencies: 'tinyfiledialogs\ntinyfiledialogs' }), /Duplicate/);
+  const options = readProjectOptions(cpp, { dependencies: lines.join('\n') });
+  assert.deepEqual(options.packages.map(library => library.id), ids);
+
+  const project = await createProject(root, 'Vulkan Distribution', async (target, parent) => {
+    await writeStarter(cpp, 'Vulkan Distribution', target, parent);
+    await applyProjectOptions(target, cpp, 'Vulkan Distribution', options);
+  });
+  const cmake = await fs.readFile(path.join(project, 'cmake/ProjectOptions.cmake'), 'utf8');
+  assert.match(cmake, /add_library\(tinyfiledialogs STATIC/);
+  assert.match(cmake, /add_library\(imgui STATIC/);
+  assert.match(cmake, /FetchContent_MakeAvailable\(bgfx_cmake\)/);
+  assert.match(cmake, /target_link_libraries\(app PRIVATE uv_a\)/);
+  const distribution = await fs.readFile(path.join(project, 'cmake/Distribution.cmake'), 'utf8');
+  assert.match(distribution, /set\(distribution_vulkan ON\)/);
+  assert.match(distribution, /add_custom_target\(distribution/);
+  assert.match(await fs.readFile(path.join(project, 'README.md'), 'utf8'), /build\/dist\/Release\//);
+});
+
+test('adds NuGet and native networking packages to their respective mixed Raylib build files', async t => {
+  const root = await fixture(t);
+  const template = starters.find(item => item.id === 'cpp-csharp-raylib');
+  const cpp = starters.find(item => item.id === 'cpp-cmake');
+  const csharp = starters.find(item => item.id === 'dotnet-console');
+  const libraries = projectOptions(template).libraries;
+  const asio = libraries.find(item => item.id === 'asio');
+  const udp = libraries.find(item => item.id === 'litenetlib');
+  const tcp = libraries.find(item => item.id === 'supersimpletcp');
+  assert.equal(projectOptions(csharp).libraryLabel, 'Common NuGet packages');
+  assert.throws(() => readProjectOptions(csharp, { dependencies: 'LiteNetLib 2.1.5\nlitenetlib 2.1.5' }), /Duplicate NuGet package/);
+  assert.throws(() => readProjectOptions(csharp, { dependencies: 'LiteNetLib 2.1.5<xml' }), /package ID and version/);
+  assert.throws(() => readProjectOptions(cpp, { dependencies: asio.line, targets: ['emscripten'] }), /desktop target/);
+
+  const options = readProjectOptions(template, { dependencies: `${asio.line}\n${udp.line}\n${tcp.line}\nraylib-cs 8.1.0` });
+  const name = 'Managed Native';
+  const project = await createProject(root, name, async (target, parent) => {
+    await writeStarter({ ...template, needsSdk: false }, name, target, parent);
+    await applyProjectOptions(target, template, name, options);
+  });
+  const csproj = await fs.readFile(path.join(project, name + '.csproj'), 'utf8');
+  assert.match(csproj, /PackageReference Include="LiteNetLib" Version="2\.1\.5"/);
+  assert.match(csproj, /PackageReference Include="SuperSimpleTcp" Version="3\.2\.3"/);
+  assert.equal([...csproj.matchAll(/PackageReference Include="Raylib-cs"/gi)].length, 1);
+  assert.match(csproj, /CopyToPublishDirectory="PreserveNewest"/);
+  const cmake = await fs.readFile(path.join(project, 'native/cmake/ProjectOptions.cmake'), 'utf8');
+  assert.match(cmake, /target_link_libraries\(pw_native PRIVATE asio\)/);
+  assert.match(cmake, /target_link_libraries\(asio INTERFACE ws2_32 mswsock\)/);
+  assert.match(await fs.readFile(path.join(project, 'Program.cs'), 'utf8'), /position = NativeMotion\.Advance\(position, step,/);
+  assert.match(await fs.readFile(path.join(project, 'scripts/package-macos.sh'), 'utf8'), /--self-contained -o "\$app\/Contents\/MacOS"/);
+});
+
 test('configures the Emscripten target for both Raylib and basic CMake languages', async t => {
   const root = await fixture(t);
   for (const id of ['c-cmake', 'cpp-cmake', 'raylib-c', 'raylib-cpp']) {
@@ -611,7 +672,7 @@ test('adds each alternative test framework to its starter', async t => {
   }
   const c = starters.find(item => item.id === 'c-cmake');
   assert.throws(() => readProjectOptions(c, { testing: true, framework: 'nunit' }), /supported test framework/);
-  assert.equal(readProjectOptions(starters.find(item => item.id === 'dotnet-console'), { testing: true, framework: 'nunit' }).type, 'dotnet-tests');
+  assert.equal(readProjectOptions(starters.find(item => item.id === 'dotnet-console'), { testing: true, framework: 'nunit' }).type, 'dotnet');
 });
 
 test('offers both React Native starters with the native CLI Node versions', () => {
@@ -624,6 +685,28 @@ test('offers both React Native starters with the native CLI Node versions', () =
   assert.equal(supportsReactNative('24.3.0'), true);
   assert.equal(supportsReactNative('25.1.0'), false);
   assert.equal(supportsReactNative('26.0.0'), true);
+});
+
+test('offers Dart CLI and API starters and Flutter mobile, desktop, and web runners', async t => {
+  const root = await fixture(t);
+  const api = starters.find(template => template.id === 'dart-server');
+  const options = readProjectOptions(api, { testing: true });
+  const project = await createProject(root, 'Dart API', async (target, parent) => {
+    await writeStarter(api, 'Dart API', target, parent);
+    await applyProjectOptions(target, api, 'Dart API', options);
+  });
+  assert.match(await fs.readFile(path.join(project, 'pubspec.yaml'), 'utf8'), /name: app_dart_api[\s\S]*test: \^1\.25\.0/);
+  assert.match(await fs.readFile(path.join(project, 'test/server_test.dart'), 'utf8'), /startServer\(port: 0\)/);
+  assert.equal(starters.find(template => template.id === 'dart-cli').group, 'cli');
+  for (const [id, group, platforms] of [
+    ['flutter-mobile', 'mobile', ['android', 'ios']],
+    ['flutter-desktop', 'desktop', ['windows', 'macos', 'linux']],
+    ['flutter-web', 'frontend', ['web']]
+  ]) {
+    const template = starters.find(item => item.id === id);
+    assert.equal(template.group, group);
+    assert.deepEqual(template.flutterPlatforms, platforms);
+  }
 });
 
 test('keeps VR opt-in and applies language and template settings independently', () => {

@@ -1,13 +1,15 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { cmakeLibraries, configureEmscripten, parseCmakeLibraries, writeCmakeOptions } = require('./cmake-options');
+const { cmakeLibraries, cmakeLibraryLine, configureEmscripten, parseCmakeLibraries, writeCmakeOptions } = require('./cmake-options');
 const { environments, parsePythonOptions, preparePython, pythonVersionSupported, selectPython } = require('./python-options');
 const { addDotnetTests, addJvmTests, addSwiftTests } = require('./extra-tests');
+const { packageChoices, parseNuGetPackages, writeNuGetPackages } = require('./dotnet-options');
 const { replaceTokens } = require('./projects');
 const { configureJava, parseJavaDependencies } = require('./java-options');
 const { configureNativeApp, executableIconFormats, mobileIconTemplate } = require('./native-app');
+const { configureNativeDistribution } = require('./native-distribution');
 const { iconVariants } = require('./icon-data');
-const { configureDesktopIcons } = require('./desktop-icons');
+const { configureDesktopApp } = require('./desktop-icons');
 const { configureMobileIcons } = require('./mobile-icons');
 const { templateAvailability } = require('./toolchains');
 
@@ -16,7 +18,7 @@ const npmOptions = { type: 'npm', dependencies: 'npm packages', example: '@scope
 const testLabels = {
   ctest: 'CTest', gtest: 'GoogleTest', catch2: 'Catch2', pytest: 'pytest', unittest: 'unittest',
   node: 'Node.js test runner', vitest: 'Vitest', junit: 'JUnit', xctest: 'XCTest', xunit: 'xUnit', nunit: 'NUnit',
-  Go: 'Go testing', Rust: 'Cargo tests', Zig: 'Zig tests'
+  Dart: 'Dart test', Go: 'Go testing', Rust: 'Cargo tests', Zig: 'Zig tests'
 };
 const nativeTests = {
   Go: {
@@ -52,16 +54,37 @@ function projectOptions(template, tools = {}, versions = [], platform = process.
   return formats.length ? { type: 'app', ...options, executableIconFormats: formats } : options;
 }
 
+function cmakeChoices(template) {
+  return cmakeLibraries(template).map(library => ({
+    id: library.id, label: library.label, line: cmakeLibraryLine(library), desktopOnly: library.desktopOnly
+  }));
+}
+
+function nativeOptionsTemplate(template) {
+  if (template.nativeTarget) return { id: template.id, language: 'C++', cmakeTarget: template.nativeTarget };
+}
+
 function buildOptions(template, tools, versions, platform, manager) {
   if (template.kind === 'react-native') return npmOptions;
   if (template.kind === 'npm-generator') return { ...npmOptions, ...testOptions('node', 'vitest') };
-  if (template.kind === 'dotnet' || template.id === 'raylib-csharp') {
-    return { type: 'dotnet-tests', ...testOptions('xunit', 'nunit') };
+  if (template.kind === 'dotnet' || (template.language === 'C#' && template.needsSdk)) {
+    const native = nativeOptionsTemplate(template);
+    const libraries = native ? [
+      ...packageChoices.map(item => ({ ...item, label: 'C# · ' + item.label })),
+      ...cmakeChoices(native).map(item => ({ ...item, label: 'C++ · ' + item.label }))
+    ] : packageChoices;
+    return { type: 'dotnet', libraries, libraryLabel: native ? 'Common NuGet and CMake libraries' : 'Common NuGet packages',
+      dependencies: native ? 'Additional NuGet and CMake dependencies' : 'Additional NuGet packages',
+      example: 'LiteNetLib 2.1.5', dependencyHint: native ?
+        'Choose a package above or enter a NuGet package ID and version or a CMake archive line. Use one line per dependency.' :
+        'Choose a package above or enter a NuGet package ID and version. Use one line per package.',
+      ...testOptions('xunit', 'nunit') };
   }
   if (template.kind !== 'starter') return;
   if (template.cmakeTarget) {
-    return { type: 'cmake', libraries: cmakeLibraries(template).map(({ id, label }) => ({ id, label })),
+    return { type: 'cmake', libraries: cmakeChoices(template), libraryLabel: 'Common CMake libraries',
       dependencies: 'Additional CMake archives', example: 'name target https://example.com/library.tar.gz [sha256]',
+      dependencyHint: 'Choose a library above or enter a custom archive. Use one line per dependency.',
       targetChoice: template.webTarget ? buildChoice('Target platforms', [
         { id: 'native', label: 'Desktop (native)', tools: template.tools, platformTools: template.platformTools,
           requirement: template.requirement },
@@ -93,6 +116,7 @@ function buildOptions(template, tools, versions, platform, manager) {
     return { ...npmOptions, ...testOptions(...(template.id === 'expo-mobile' ? ['node'] : ['node', 'vitest'])) };
   }
   if (['kotlin-multiplatform', 'kotlin-android-xr', 'android-compose', 'ios-swiftui'].includes(template.id)) return;
+  if (template.language === 'Dart') return { type: 'dart', ...testOptions('Dart') };
   if (template.language === 'Kotlin') return { type: 'jvm-tests', ...testOptions('junit') };
   if (template.language === 'Swift') return { type: 'swift-tests', ...testOptions('xctest') };
   if (nativeTests[template.language]) return { type: 'native', ...testOptions(template.language) };
@@ -137,6 +161,7 @@ function readProjectOptions(template, input = {}, selectedIcons) {
     targets = [...new Set(selected)];
   }
   let packages;
+  let nativePackages;
   let icons;
   if (input.executableIcon === true) {
     if (!config.executableIconFormats?.length || (targets && !targets.includes('native'))) {
@@ -157,11 +182,22 @@ function readProjectOptions(template, input = {}, selectedIcons) {
       throw new Error('The selected JUnit example already adds the JUnit dependencies.');
     }
   } else if (config.type === 'cmake') {
-    packages = parseCmakeLibraries(template, Array.isArray(input.libraries) ? input.libraries : [], lines);
+    packages = parseCmakeLibraries(template, Array.isArray(input.libraries) ? input.libraries : [], lines, targets);
   } else if (config.type === 'npm') {
     packages = parseNpmLibraries(lines);
+  } else if (config.type === 'dotnet') {
+    const native = nativeOptionsTemplate(template);
+    const nativeIds = new Set(native ? cmakeLibraries(native).map(library => library.id) : []);
+    const nugetLines = [];
+    const cmakeLines = [];
+    for (const line of lines) {
+      const [, , archive] = line.split(/\s+/);
+      (native && (nativeIds.has(line) || archive?.startsWith('https://')) ? cmakeLines : nugetLines).push(line);
+    }
+    packages = parseNuGetPackages(nugetLines);
+    if (native) nativePackages = parseCmakeLibraries(native, [], cmakeLines);
   }
-  return { type: config.type, packages, framework, build, targets, icons };
+  return { type: config.type, packages, nativePackages, framework, build, targets, icons };
 }
 
 async function appendTest(project, file, source, command, label) {
@@ -218,28 +254,51 @@ async function configureNpm(project, template, name, options) {
 
 async function applyProjectOptions(project, template, name, options, parent, log) {
   if (!options) return;
-  if (!options.icons) return applyBuildOptions(project, template, name, options, parent, log);
+  if (!options.icons) {
+    await applyBuildOptions(project, template, name, options, parent, log);
+    if (options.type !== 'cmake' && (template.group === 'desktop' || (template.group === 'raylib' && template.language === 'C#'))) {
+      await configureDesktopApp(project, template, name, options, new Map());
+    }
+    return;
+  }
   const { outputs, raster } = await iconVariants(options.icons, executableIconFormats(template));
   const mobile = mobileIconTemplate(template);
   if (raster && !mobile) outputs.set('.png', { data: await raster.png(256) });
   await applyBuildOptions(project, template, name, { ...options, icons: outputs }, parent, log);
   if (mobile) return configureMobileIcons(project, template, name, raster);
-  if (options.type !== 'cmake' || template.cmakeLibrary) return configureDesktopIcons(project, template, name, options, outputs, raster);
+  if (options.type !== 'cmake' || template.cmakeLibrary) return configureDesktopApp(project, template, name, options, outputs, raster);
 }
 
 async function applyBuildOptions(project, template, name, options, parent, log) {
   if (options.type === 'cmake') {
     if (options.targets?.includes('emscripten')) await configureEmscripten(project, template, name, options.targets);
     await configureNativeApp(project, template, name, options);
-    return writeCmakeOptions(project, template, options.packages, options.framework, options.targets);
+    await writeCmakeOptions(project, template, options.packages, options.framework, options.targets);
+    return configureNativeDistribution(project, template, options);
   }
   if (options.type === 'java') return configureJava(project, template, name, options);
   if (options.type === 'python') return preparePython(project, template, name, options);
   if (options.type === 'npm') return configureNpm(project, template, name, options);
+  if (options.type === 'dotnet') {
+    await writeNuGetPackages(project, options.packages);
+    const native = nativeOptionsTemplate(template);
+    if (native) await writeCmakeOptions(path.join(project, 'native'), native, options.nativePackages);
+    if (options.framework) {
+      await addDotnetTests(project, parent, options.framework, log, native && {
+        call: 'NativeMotion.Advance(94, 10, 100)', expected: 4
+      });
+    }
+    return;
+  }
   if (options.framework) {
-    if (options.type === 'dotnet-tests') return addDotnetTests(project, parent, options.framework, log);
     if (options.type === 'jvm-tests') return addJvmTests(project, true);
     if (options.type === 'swift-tests') return addSwiftTests(project);
+    if (options.type === 'dart') {
+      const testFile = template.id === 'dart-server' ? 'test/server_test.dart' : 'test/greeting_test.dart';
+      const source = await fs.readFile(path.join(__dirname, '..', 'templates', template.id, testFile), 'utf8');
+      await fs.appendFile(path.join(project, 'pubspec.yaml'), '\ndev_dependencies:\n  test: ^1.25.0\n');
+      return appendTest(project, testFile, replaceTokens(source, name), 'dart pub get\ndart test', 'Run the Dart test example.');
+    }
     const test = nativeTests[template.language];
     await appendTest(project, test.file, test.source, test.command, test.label + '.');
   }

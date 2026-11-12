@@ -247,7 +247,23 @@ const toolchains = {
   },
   flutter: {
     label: 'Flutter SDK', url: 'https://docs.flutter.dev/install',
-    instructions: 'Install the stable Flutter SDK and put its bin directory on PATH or set FLUTTER_ROOT. Run flutter doctor for Android and iOS setup.'
+    instructions: 'Install the stable Flutter SDK and put its bin directory on PATH or set FLUTTER_ROOT. Run flutter doctor for your target platform.'
+  },
+  dart: {
+    label: 'Dart SDK', url: 'https://dart.dev/get-dart',
+    instructions: 'Install the latest stable Dart SDK or Flutter SDK, then add its bin directory to PATH. Dart starters require Dart 3.4 or newer.'
+  },
+  'flutter-windows': {
+    label: 'Flutter Windows desktop tools', url: 'https://docs.flutter.dev/platform-integration/windows/setup',
+    instructions: 'Install Visual Studio with the Desktop development with C++ workload and run flutter doctor.'
+  },
+  'flutter-linux': {
+    label: 'Flutter Linux desktop tools', url: 'https://docs.flutter.dev/platform-integration/linux/setup',
+    instructions: 'Install clang, CMake, Ninja, pkg-config, and the GTK 3 development files, then run flutter doctor.'
+  },
+  'flutter-macos': {
+    label: 'Xcode for Flutter desktop', url: 'https://docs.flutter.dev/platform-integration/macos/setup',
+    instructions: 'Install and select the full Xcode app, then run flutter doctor.'
   },
   'compose-gradle': {
     label: 'Gradle for Android Compose', url: 'https://gradle.org/releases/',
@@ -610,7 +626,7 @@ async function findSupplementalTools(settings, probe, directories, appleSdk) {
     return probe(['blender'], ['--version'], blenderPattern,
       [...blenderFolders, mac && '/Applications/Blender.app/Contents/MacOS']);
   };
-  const [blender, composer, latex, ollama, xcodegen, iosVersion, flutterFiles] = await Promise.all([
+  const [blender, composer, latex, ollama, xcodegen, iosVersion, flutterFiles, xcodeVersion] = await Promise.all([
     findBlender(),
     probe(['composer'], ['--version'], /Composer(?: version)?\s+(\d+\.\d+\.\d+)/i),
     probe(['pdflatex'], ['--version'], /pdfTeX[^\r\n]*?(\d+\.\d+(?:\.\d+)?)/i),
@@ -620,22 +636,30 @@ async function findSupplementalTools(settings, probe, directories, appleSdk) {
     ]),
     mac ? probe(['xcodegen'], ['--version'], /(\d+\.\d+\.\d+)/) : undefined,
     mac && appleSdk ? commandOutput('/usr/bin/xcrun', ['--sdk', 'iphoneos', '--show-sdk-version'], settings).catch(() => '') : '',
-    candidates(['flutter'], flutterFolders, platform)
+    candidates(['flutter'], flutterFolders, platform),
+    mac && appleSdk ? commandOutput('/usr/bin/xcodebuild', ['-version'], settings).then(output =>
+      output.match(/^Xcode (\d+(?:\.\d+)+)/m)?.[1]).catch(() => undefined) : undefined
   ]);
   const bibtex = latex && (await candidates(['bibtex'], directories(path.dirname(latex.file)), platform))[0];
   let flutter;
+  let bundledDart;
   if (flutterFiles.length) {
     const file = flutterFiles[0];
     const resolved = await fs.realpath(file).catch(() => file);
+    bundledDart = path.join(path.dirname(resolved), 'cache', 'dart-sdk', 'bin');
     const metadata = await fs.readFile(path.join(path.dirname(resolved), 'cache', 'flutter.version.json'), 'utf8')
       .then(JSON.parse).catch(() => undefined);
     flutter = { file, version: typeof metadata?.frameworkVersion === 'string' ? metadata.frameworkVersion : 'SDK found' };
   }
+  const dart = await probe(['dart'], ['--version'], /\bDart SDK version: (\d+\.\d+\.\d+)/i, [
+    env.DART_SDK && path.join(env.DART_SDK, 'bin'), bundledDart
+  ]);
   return {
     blender: requireVersion(blender, 4, 2),
     composer: requireVersion(composer, 2),
     latex: bibtex ? latex : undefined,
-    ollama, xcodegen, flutter,
+    ollama, xcodegen, flutter, dart: requireVersion(dart, 3, 4),
+    'flutter-macos': xcodeVersion ? { version: xcodeVersion, file: '/usr/bin/xcodebuild' } : undefined,
     'ios-sdk': /^\d+(?:\.\d+)+$/.test(iosVersion) ? { version: iosVersion, file: '/usr/bin/xcrun' } : undefined
   };
 }
@@ -722,6 +746,10 @@ async function detectToolchains(settings = system) {
   const javaRuntime = javac && await detectExecutable(['java'], ['-version'], /version "(\d+(?:\.\d+)*)/, [path.dirname(javac.file), ...javaDirs], settings, file => mac && file === '/usr/bin/java');
   const emcmake = emscripten && (await candidates(['emcmake'], directories(path.dirname(emscripten.file)), platform))[0];
   const emscriptenGenerator = windows && await probe(['ninja', 'mingw32-make'], ['--version'], /^(?:GNU Make )?(\d+\.\d+(?:\.\d+)?)/);
+  const flutterLinuxTools = platform === 'linux' && await Promise.all([
+    probe(['ninja'], ['--version'], /^(\d+\.\d+(?:\.\d+)?)/),
+    probe(['clang++'], ['--version'], /clang version (\d+\.\d+(?:\.\d+)?)/)
+  ]);
   const systemCompiler = studio ? { version: 'MSVC', file: studio.file } : appleSdk ? { version: 'Apple Clang', file: appleSdk.file } : undefined;
   const virtualenvRuntime = pythonVersions.find(runtime => runtime.usable && runtime.virtualenv);
   const pkgConfig = (module) => probe(['pkg-config', 'pkgconf'], ['--modversion', module], /^(\d+(?:\.\d+)*)/);
@@ -778,6 +806,8 @@ async function detectToolchains(settings = system) {
     'electron-node': requireVersion(node, 22, 13),
     'tauri-windows': webView,
     'tauri-linux': ssl ? webkit : undefined,
+    'flutter-windows': studio ? { version: 'MSVC', file: studio.file } : undefined,
+    'flutter-linux': cmake && gtk && flutterLinuxTools?.[0] && flutterLinuxTools[1] ? gtk : undefined,
     gtk4, 'gtkmm-4.0': gtkmm,
     npm,
     cmake: requireVersion(cmake, 3, 24),

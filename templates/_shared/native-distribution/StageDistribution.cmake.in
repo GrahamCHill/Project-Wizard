@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.24)
+
+set(config_dir "${config}")
+if(config_dir STREQUAL "")
+    set(config_dir Default)
+endif()
+if(NOT config_dir MATCHES "^[A-Za-z0-9_+-]+$")
+    message(FATAL_ERROR "Invalid distribution configuration: ${config_dir}")
+endif()
+
+file(REAL_PATH "@CMAKE_CURRENT_BINARY_DIR@" build_dir)
+set(dist_dir "${build_dir}/dist")
+set(package_dir "${dist_dir}/${config_dir}")
+file(REAL_PATH "${package_dir}" resolved_dir)
+if(IS_SYMLINK "${dist_dir}" OR IS_SYMLINK "${package_dir}" OR NOT resolved_dir STREQUAL package_dir)
+    message(FATAL_ERROR "Distribution output must be inside ${dist_dir}")
+endif()
+file(REMOVE_RECURSE "${package_dir}")
+execute_process(COMMAND "${CMAKE_COMMAND}" --install "${build_dir}" --config "${config}"
+    --prefix "${package_dir}" --component "@distribution_component@" COMMAND_ERROR_IS_FATAL ANY)

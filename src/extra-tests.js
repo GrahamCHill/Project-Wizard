@@ -98,20 +98,31 @@ async function addSwiftTests(project) {
   await testInstructions(project, 'Swift Package Manager runs the XCTest example.', 'swift test');
 }
 
-async function addDotnetTests(project, parent, framework, log) {
+async function addDotnetTests(project, parent, framework, log, subject) {
   const directory = path.join(project, 'tests');
   const name = 'Example.Tests';
   const rootProjects = (await fs.readdir(project)).filter(file => file.endsWith('.csproj'));
+  if (subject && rootProjects.length !== 1) throw new Error('The interop test needs one application project.');
   await fs.mkdir(directory);
   await createDotnetProject({ shortName: framework, language: 'C#' }, name, directory, parent, log);
   const testProject = path.join(directory, name + '.csproj');
-  const testManifest = await fs.readFile(testProject, 'utf8');
-  await fs.writeFile(testProject, testManifest.replace(/<PropertyGroup>/,
-    '<PropertyGroup>\n    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>'));
+  let testManifest = (await fs.readFile(testProject, 'utf8')).replace(/<PropertyGroup>/,
+    '<PropertyGroup>\n    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>');
+  if (subject) {
+    testManifest = testManifest.replace(/<\/Project>\s*$/, '  <ItemGroup>\n' +
+      `    <ProjectReference Include="../${rootProjects[0]}" />\n  </ItemGroup>\n</Project>\n`);
+  }
+  await fs.writeFile(testProject, testManifest);
   const xunit = framework === 'xunit';
-  const source = xunit ?
-    'using Xunit;\n\nnamespace Example.Tests;\n\npublic class ExampleTests\n{\n    [Fact]\n    public void AddsTwoNumbers()\n    {\n        Assert.Equal(5, Add(2, 3));\n    }\n\n    private static int Add(int left, int right) => left + right;\n}\n' :
-    'using NUnit.Framework;\n\nnamespace Example.Tests;\n\npublic class ExampleTests\n{\n    [Test]\n    public void AddsTwoNumbers()\n    {\n        Assert.That(Add(2, 3), Is.EqualTo(5));\n    }\n\n    private static int Add(int left, int right) => left + right;\n}\n';
+  const call = subject?.call || 'Add(2, 3)';
+  const expected = subject?.expected ?? 5;
+  const assertion = xunit ? `Assert.Equal(${expected}, ${call});` : `Assert.That(${call}, Is.EqualTo(${expected}));`;
+  const source = [
+    xunit ? 'using Xunit;' : 'using NUnit.Framework;', '', 'namespace Example.Tests;', '', 'public class ExampleTests', '{',
+    xunit ? '    [Fact]' : '    [Test]', `    public void ${subject ? 'WrapsPositionInCpp' : 'AddsTwoNumbers'}()`,
+    '    {', '        ' + assertion, '    }',
+    ...(subject ? [] : ['', '    private static int Add(int left, int right) => left + right;']), '}', ''
+  ].join('\n');
   await fs.writeFile(path.join(directory, 'UnitTest1.cs'), source);
   for (const file of rootProjects) {
     const target = path.join(project, file);
@@ -120,7 +131,9 @@ async function addDotnetTests(project, parent, framework, log) {
     if (updated === original) throw new Error('Could not exclude test sources from the application project.');
     await fs.writeFile(target, updated);
   }
-  await testInstructions(project, (xunit ? 'xUnit' : 'NUnit') + ' runs as a separate test project.', 'dotnet test tests/' + name + '.csproj');
+  const note = subject ? 'The test calls the same C++ function that moves the circle in the app.' :
+    (xunit ? 'xUnit' : 'NUnit') + ' runs as a separate test project.';
+  await testInstructions(project, note, 'dotnet test tests/' + name + '.csproj');
 }
 
 module.exports = { addDotnetTests, addJvmTests, addSwiftTests, junitVersion, testInstructions };

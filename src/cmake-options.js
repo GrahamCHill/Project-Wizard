@@ -3,27 +3,94 @@ const path = require('node:path');
 const { starterReadme } = require('./starters');
 
 const libraries = [
-  { id: 'yyjson', label: 'yyjson (C JSON)', languages: ['C'], target: 'yyjson',
+  { id: 'yyjson', label: 'yyjson (C JSON)', languages: ['C', 'C++'], target: 'yyjson',
     url: 'https://github.com/ibireme/yyjson/archive/refs/tags/0.13.0.tar.gz' },
   { id: 'fmt', label: 'fmt (C++ formatting)', languages: ['C++', 'CUDA'], target: 'fmt::fmt',
     url: 'https://github.com/fmtlib/fmt/archive/refs/tags/12.1.0.tar.gz' },
   { id: 'nlohmann_json', label: 'nlohmann/json (C++ JSON)', languages: ['C++', 'CUDA'], target: 'nlohmann_json::nlohmann_json',
     url: 'https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz',
-    hash: '42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa' }
+    hash: '42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa' },
+  { id: 'cxxopts', label: 'cxxopts (C++ command-line options)', languages: ['C++'], target: 'cxxopts::cxxopts',
+    url: 'https://codeload.github.com/jarro2783/cxxopts/tar.gz/refs/tags/v3.3.1' },
+  { id: 'glm', label: 'GLM (C++ graphics math)', languages: ['C++'], target: 'glm::glm',
+    url: 'https://codeload.github.com/g-truc/glm/tar.gz/refs/tags/1.0.3',
+    before: ['set(GLM_BUILD_LIBRARY OFF CACHE BOOL "Use header-only GLM")'] },
+  { id: 'stb', label: 'stb (C/C++ image, font and utility headers)', languages: ['C', 'C++'], target: 'stb_headers',
+    url: 'https://codeload.github.com/nothings/stb/tar.gz/78770d85c4d94787a56c7859017da963bc4f3439',
+    cmake: ['add_library(stb_headers INTERFACE)', 'target_include_directories(stb_headers INTERFACE "${stb_SOURCE_DIR}")'] },
+  { id: 'libuv', label: 'libuv (C/C++ TCP and UDP)', languages: ['C', 'C++'], target: 'uv_a', desktopOnly: true,
+    url: 'https://dist.libuv.org/dist/v1.53.0/libuv-v1.53.0.tar.gz',
+    hash: 'cb0d6dd2128d5a95bd242c6cc982a24fe608fa93da57b6b4ec763b0018c53e64',
+    before: ['enable_language(C)', 'set(LIBUV_BUILD_SHARED OFF CACHE BOOL "Build libuv as a static library")'],
+    cmake: ['set_target_properties(uv_a PROPERTIES POSITION_INDEPENDENT_CODE ON)'] },
+  { id: 'asio', label: 'Asio (C++ TCP, UDP and async networking)', languages: ['C++'], target: 'asio', desktopOnly: true,
+    url: 'https://codeload.github.com/chriskohlhoff/asio/tar.gz/refs/tags/asio-1-38-2',
+    cmake: [
+      'find_package(Threads REQUIRED)',
+      'add_library(asio INTERFACE)',
+      'target_include_directories(asio SYSTEM INTERFACE "${asio_SOURCE_DIR}/include")',
+      'target_compile_definitions(asio INTERFACE ASIO_STANDALONE)',
+      'target_link_libraries(asio INTERFACE Threads::Threads)',
+      'if(WIN32)',
+      '    target_link_libraries(asio INTERFACE ws2_32 mswsock)',
+      'endif()'
+    ] },
+  { id: 'tinyfiledialogs', label: 'tinyfiledialogs (native dialogs)', languages: ['C', 'C++'],
+    target: 'tinyfiledialogs', repository: 'https://git.code.sf.net/p/tinyfiledialogs/code',
+    revision: '26a964253380e4d48c6d7dead03ca13e43e38c8a', desktopOnly: true,
+    cmake: [
+      'enable_language(C)',
+      'add_library(tinyfiledialogs STATIC "${tinyfiledialogs_SOURCE_DIR}/tinyfiledialogs.c")',
+      'target_include_directories(tinyfiledialogs PUBLIC "${tinyfiledialogs_SOURCE_DIR}")',
+      'set_target_properties(tinyfiledialogs PROPERTIES POSITION_INDEPENDENT_CODE ON)',
+      'if(WIN32)',
+      '    target_link_libraries(tinyfiledialogs PUBLIC comdlg32 ole32 shell32 user32 gdi32)',
+      'endif()'
+    ] },
+  { id: 'imgui', label: 'Dear ImGui (C++ core)', languages: ['C++'], target: 'imgui',
+    url: 'https://codeload.github.com/ocornut/imgui/tar.gz/refs/tags/v1.92.8',
+    cmake: [
+      'add_library(imgui STATIC',
+      ...['imgui', 'imgui_draw', 'imgui_tables', 'imgui_widgets'].map(file => `    "\${imgui_SOURCE_DIR}/${file}.cpp"`),
+      ')',
+      'target_include_directories(imgui PUBLIC "${imgui_SOURCE_DIR}")',
+      'set_target_properties(imgui PROPERTIES POSITION_INDEPENDENT_CODE ON)'
+    ] },
+  { id: 'bgfx', label: 'bgfx (C++ rendering, desktop)', languages: ['C++'], target: 'bgfx',
+    content: 'bgfx_cmake', desktopOnly: true,
+    url: 'https://codeload.github.com/bkaradzic/bgfx.cmake/tar.gz/refs/tags/v1.168.9624-612',
+    before: ['BGFX_BUILD_TOOLS', 'BGFX_BUILD_EXAMPLES', 'BGFX_INSTALL'].map(option =>
+      `set(${option} OFF CACHE BOOL "Build only the bgfx libraries")`) }
 ];
 
 function cmakeLibraries(template) {
-  return libraries.filter(library => library.languages.includes(template.language));
+  return libraries.filter(library => library.languages.includes(template.language) &&
+    !(library.desktopOnly && template.androidCmake));
 }
 
-function parseCmakeLibraries(template, chosen, lines) {
-  const selected = cmakeLibraries(template).filter(library => chosen.includes(library.id));
+function cmakeLibraryLine(library) {
+  return library.repository ? library.id : [library.id, library.target, library.url, library.hash].filter(Boolean).join(' ');
+}
+
+function parseCmakeLibraries(template, chosen, lines, targets) {
+  const available = cmakeLibraries(template);
+  const selected = available.filter(library => chosen.includes(library.id));
   const bundled = template.id === 'cpp-lua-desktop' ? ['lua', 'lua_runtime', 'copy_script'] :
     template.id === 'godot-native-cpp' ? ['godot_cpp', 'godot-cpp'] : [];
   const names = new Set(['app', 'game', 'raylib', 'sdl2', 'sdl3', 'wxwidgets', 'googletest', 'catch2', 'example_test', 'starter_logic',
-    template.cmakeTarget, ...bundled, ...selected.map(library => library.id)]);
+    template.cmakeTarget, 'bgfx_cmake', 'bx', 'bimg', 'stb_headers', ...bundled, ...selected.map(library => library.id)]);
   for (const line of lines) {
     const [id, target, url, hash, extra] = line.split(/\s+/);
+    if (names.has(id)) throw new Error('Duplicate or reserved CMake dependency name: ' + id);
+    const preset = available.find(library => library.id === id && (line === id || line === cmakeLibraryLine(library)));
+    if (preset) {
+      names.add(id);
+      selected.push(preset);
+      continue;
+    }
+    if (libraries.some(library => library.id === id && (library.cmake || library.content))) {
+      throw new Error('Use the library picker for ' + id + ' on a supported language and target.');
+    }
     if (!/^[a-z][a-z0-9_-]*$/.test(id) ||
         !/^[a-zA-Z_][a-zA-Z0-9_+.-]*(?:::[a-zA-Z_][a-zA-Z0-9_+.-]*)?$/.test(target || '') ||
         !/^https:\/\/[a-zA-Z0-9][a-zA-Z0-9:/?&=_%+~@.-]+$/.test(url || '') ||
@@ -32,19 +99,24 @@ function parseCmakeLibraries(template, chosen, lines) {
     }
     const parsed = new URL(url);
     if (parsed.username || parsed.password) throw new Error('Use a CMake archive URL without embedded credentials.');
-    if (names.has(id)) throw new Error('Duplicate or reserved CMake dependency name: ' + id);
     names.add(id);
     selected.push({ id, target, url, hash });
+  }
+  const desktopOnly = selected.filter(library => library.desktopOnly);
+  if (targets && !targets.includes('native') && desktopOnly.length) {
+    throw new Error('Select the desktop target to use ' + desktopOnly.map(library => library.id).join(', ') + '.');
   }
   return selected;
 }
 
 function declare(library) {
   return [
-    'FetchContent_Declare(' + library.id,
-    '    URL "' + library.url + '"',
-    ...(library.hash ? ['    URL_HASH SHA256=' + library.hash] : []),
-    '    DOWNLOAD_EXTRACT_TIMESTAMP TRUE',
+    'FetchContent_Declare(' + (library.content || library.id),
+    ...(library.repository ? ['    GIT_REPOSITORY "' + library.repository + '"', '    GIT_TAG ' + library.revision] : [
+      '    URL "' + library.url + '"',
+      ...(library.hash ? ['    URL_HASH SHA256=' + library.hash] : []),
+      '    DOWNLOAD_EXTRACT_TIMESTAMP TRUE'
+    ]),
     ')'
   ];
 }
@@ -105,11 +177,22 @@ async function writeCmakeOptions(project, template, libraries, framework, target
   if (libraries.length) {
     const dependencies = ['include(FetchContent)'];
     for (const library of libraries) {
-      dependencies.push(...declare(library), 'FetchContent_MakeAvailable(' + library.id + ')',
-        'target_link_libraries(' + template.cmakeTarget + ' PRIVATE ' + library.target + ')', '');
+      const setup = [...(library.before || []), ...declare(library),
+        'FetchContent_MakeAvailable(' + (library.content || library.id) + ')', ...(library.cmake || []),
+        'target_link_libraries(' + template.cmakeTarget + ' PRIVATE ' + library.target + ')'];
+      dependencies.push(...(library.desktopOnly ? ['if(NOT EMSCRIPTEN)', ...setup.map(line => '    ' + line), 'endif()'] : setup), '');
     }
     dependencies.pop();
     addSection('ANDROID', dependencies);
+    if (libraries.some(library => library.id === 'tinyfiledialogs')) {
+      await fs.appendFile(path.join(project, 'README.md'), '\nCMake uses Git to fetch tinyfiledialogs. In C sources, include `<stddef.h>` before `<tinyfiledialogs.h>` for Windows builds. On Linux, install Zenity or KDialog to use graphical file dialogs.\n');
+    }
+    if (libraries.some(library => library.id === 'imgui')) {
+      await fs.appendFile(path.join(project, 'README.md'), '\nDear ImGui is linked as a C++ library. Add the [Dear ImGui backend sources](https://github.com/ocornut/imgui/blob/master/docs/BACKENDS.md) for your windowing and rendering APIs when integrating a UI.\n');
+    }
+    if (libraries.some(library => library.id === 'bgfx')) {
+      await fs.appendFile(path.join(project, 'README.md'), '\nCMake uses Git to fetch the bgfx sources for desktop builds. On Linux, install the X11, OpenGL, and Wayland development packages used by bgfx. See the [bgfx API](https://bkaradzic.github.io/bgfx/bgfx.html) to initialize the renderer and add a draw loop.\n');
+    }
   }
   if (framework) {
     const example = testExamples[framework];
@@ -155,4 +238,4 @@ async function configureEmscripten(project, template, name, targets) {
   }
 }
 
-module.exports = { cmakeLibraries, configureEmscripten, parseCmakeLibraries, writeCmakeOptions };
+module.exports = { cmakeLibraries, cmakeLibraryLine, configureEmscripten, parseCmakeLibraries, writeCmakeOptions };

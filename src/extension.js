@@ -197,7 +197,10 @@ function wizardHtml(webview, extensionUri) {
                 <p id="python-environment-help"></p>
                 <button id="python-manager-guide" type="button" class="secondary" hidden>Open setup guide</button>
               </div>
-              <div id="library-choices" hidden></div>
+              <div id="library-picker" hidden>
+                <label for="library-choices" id="library-picker-label">Common libraries</label>
+                <select id="library-choices"></select>
+              </div>
               <div id="dependency-options" hidden>
                 <label for="dependencies" id="dependencies-label">Additional dependencies</label>
                 <textarea id="dependencies" rows="2" maxlength="12000" spellcheck="false" autocomplete="off"></textarea>

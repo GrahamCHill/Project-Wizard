@@ -1,0 +1,31 @@
+set(runtime_dirs "@runtime_dirs@")
+set(exclude_names [=[@exclude_names@]=])
+set(exclude_paths [=[@exclude_paths@]=])
+set(destination "${CMAKE_INSTALL_PREFIX}/lib")
+if(WIN32)
+    set(destination "${CMAKE_INSTALL_PREFIX}")
+    set(target_dlls "$<TARGET_RUNTIME_DLLS:@distribution_target@>")
+    foreach(dll IN LISTS target_dlls)
+        get_filename_component(dll_dir "${dll}" DIRECTORY)
+        list(APPEND runtime_dirs "${dll_dir}")
+    endforeach()
+    list(REMOVE_DUPLICATES runtime_dirs)
+endif()
+
+if(POLICY CMP0207)
+    cmake_policy(SET CMP0207 NEW)
+endif()
+file(GET_RUNTIME_DEPENDENCIES
+    EXECUTABLES "$<TARGET_FILE:@distribution_target@>"
+    DIRECTORIES ${runtime_dirs}
+    PRE_EXCLUDE_REGEXES ${exclude_names}
+    POST_EXCLUDE_REGEXES ${exclude_paths}
+    RESOLVED_DEPENDENCIES_VAR resolved
+    UNRESOLVED_DEPENDENCIES_VAR unresolved)
+if(unresolved)
+    list(JOIN unresolved ", " missing)
+    message(FATAL_ERROR "Could not locate required runtime libraries: ${missing}")
+endif()
+foreach(library IN LISTS resolved)
+    file(INSTALL DESTINATION "${destination}" TYPE SHARED_LIBRARY FOLLOW_SYMLINK_CHAIN FILES "${library}")
+endforeach()

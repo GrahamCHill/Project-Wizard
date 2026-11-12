@@ -20,6 +20,10 @@ function appendReadme(project, text) {
   return fs.appendFile(path.join(project, 'README.md'), '\n## App icon\n\n' + text + '\n');
 }
 
+function appendDistribution(project, text) {
+  return fs.appendFile(path.join(project, 'README.md'), '\n## Distribution\n\n' + text + '\n');
+}
+
 async function tauriIcons(project, icons, raster) {
   const assets = path.join(project, 'src-tauri', 'icons');
   const configFile = path.join(project, 'src-tauri', 'tauri.conf.json');
@@ -60,6 +64,32 @@ async function electronIcons(project, icons) {
   await appendReadme(project, 'Run `npm run package` to package the application. Forge uses the selected native icon when packaging for Windows or macOS, and the PNG is used by the desktop window when available.');
 }
 
+async function flutterDesktopIcons(project, icons, raster) {
+  if (icons.has('.ico')) {
+    await fs.writeFile(path.join(project, 'windows/runner/resources/app_icon.ico'), icons.get('.ico').data);
+  }
+  if (!raster) return;
+
+  const catalog = path.join(project, 'macos/Runner/Assets.xcassets/AppIcon.appiconset');
+  const manifest = JSON.parse(await fs.readFile(path.join(catalog, 'Contents.json'), 'utf8'));
+  const macIcons = new Map(manifest.images.filter(image => image.filename).map(({ filename, size, scale }) =>
+    [filename, Number.parseInt(size, 10) * Number.parseInt(scale, 10)]));
+  await Promise.all([...macIcons].map(async ([file, size]) => fs.writeFile(path.join(catalog, file), await raster.png(size))));
+
+  await fs.writeFile(path.join(project, 'linux/app-icon.png'), await raster.png(256));
+  await fs.appendFile(path.join(project, 'linux/CMakeLists.txt'),
+    '\ninstall(FILES "${CMAKE_CURRENT_SOURCE_DIR}/app-icon.png" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)\n');
+  await updateFile(project, 'linux/runner/my_application.cc', source =>
+    source.replace(/(\n\s*gtk_window_set_default_size\(window,[^;]+;)/, '$1\n' + [
+      '  g_autofree gchar* executable = g_file_read_link("/proc/self/exe", nullptr);',
+      '  if (executable != nullptr) {',
+      '    g_autofree gchar* directory = g_path_get_dirname(executable);',
+      '    g_autofree gchar* icon = g_build_filename(directory, "data", "app-icon.png", nullptr);',
+      '    gtk_window_set_icon_from_file(window, icon, nullptr);',
+      '  }'
+    ].join('\n')));
+}
+
 async function pythonIcons(project, name, options, icons) {
   const png = icons.has('.png');
   const ico = icons.has('.ico');
@@ -74,11 +104,12 @@ async function pythonIcons(project, name, options, icons) {
   const install = options.environment === 'uv' ? '' : (options.environment === 'conda' ? 'conda run --prefix ./.venv ' : '') +
     'python -m pip install pyinstaller\n';
   const platforms = [['Windows', '.ico'], ['macOS', '.icns'], ['Linux', '.png']];
-  const commands = platforms.filter(([, extension]) => icons.has(extension)).map(([platform, extension]) =>
+  const commands = platforms.map(([platform, extension]) =>
     '### ' + platform + '\n\n~~~sh\n' + install + command + ' --windowed --name "' + name + '" --add-data "assets:assets"' +
-    (platform === 'Linux' ? '' : ' --icon assets/app' + extension) + ' main.py\n~~~');
-  await appendReadme(project, 'Package the app from the configured Python environment with PyInstaller. The output goes in `dist/`.\n\n' +
-    commands.join('\n\n'));
+    (platform !== 'Linux' && icons.has(extension) ? ' --icon assets/app' + extension : '') + ' main.py\n~~~');
+  const generic = `~~~sh\n${install}${command} --windowed --name "${name}" main.py\n~~~`;
+  await appendDistribution(project, 'Package the app from the configured Python environment with PyInstaller. Share the app directory or macOS bundle in `dist/`.\n\n' +
+    (icons.size ? commands.join('\n\n') : generic));
 }
 
 async function jvmIcons(project, template, name, options, icons) {
@@ -141,19 +172,20 @@ async function jvmIcons(project, template, name, options, icons) {
       (png ? '\njar --update --file package-input/app.jar -C assets app.png' : '');
   }
   const platforms = [['Windows', '.ico'], ['macOS', '.icns'], ['Linux', '.png']];
-  const commands = platforms.filter(([, extension]) => icons.has(extension)).map(([platform, extension]) =>
-    '### ' + platform + '\n\n~~~sh\njpackage --type app-image --dest packaged --name "' + name + '" --input "' + input +
-    '" --main-jar "' + mainJar + '" --main-class ' + (java ? 'Main' : 'MainKt') + ' --icon assets/app' + extension + '\n~~~');
+  const packageCommand = 'jpackage --type app-image --dest packaged --name "' + name + '" --input "' + input +
+    '" --main-jar "' + mainJar + '" --main-class ' + (java ? 'Main' : 'MainKt');
+  const commands = platforms.map(([platform, extension]) => '### ' + platform + '\n\n~~~sh\n' + packageCommand +
+    (icons.has(extension) ? ' --icon assets/app' + extension : '') + '\n~~~');
   await fs.appendFile(path.join(project, '.gitignore'), '\n/package-input/\n/packaged/\n');
-  await appendReadme(project, 'Build the JAR and use JDK 17 or newer to package the app for your current platform.\n\n~~~sh\n' +
-    build + '\n~~~\n\n' + commands.join('\n\n'));
+  await appendDistribution(project, 'Build the JAR and use JDK 17 or newer to create an app image with the JVM bundled. Share the app image in `packaged/`.\n\n~~~sh\n' +
+    build + '\n~~~\n\n' + (icons.size ? commands.join('\n\n') : `~~~sh\n${packageCommand}\n~~~`));
 }
 
-async function macBundle(project, template, name) {
+async function macBundle(project, template, name, icon) {
   const folder = path.join(project, 'scripts');
   await fs.mkdir(folder, { recursive: true });
   const slug = replaceTokens('__PROJECT_SLUG__', name);
-  const dotnet = template.id === 'raylib-csharp';
+  const dotnet = template.language === 'C#';
   const executable = dotnet ? name : 'App';
   const commands = dotnet ? [
     'case "$(uname -m)" in',
@@ -173,7 +205,7 @@ async function macBundle(project, template, name) {
     '  <key>CFBundleExecutable</key><string>' + executable + '</string>',
     '  <key>CFBundleName</key><string>' + name + '</string>',
     '  <key>CFBundleIdentifier</key><string>com.example.' + slug + '</string>',
-    '  <key>CFBundleIconFile</key><string>app.icns</string>',
+    ...(icon ? ['  <key>CFBundleIconFile</key><string>app.icns</string>'] : []),
     '  <key>CFBundlePackageType</key><string>APPL</string>',
     '  <key>CFBundleShortVersionString</key><string>0.1.0</string>',
     '  <key>CFBundleVersion</key><string>1</string>',
@@ -182,17 +214,17 @@ async function macBundle(project, template, name) {
   const script = [
     '#!/bin/sh', 'set -eu', 'cd "$(dirname "$0")/.."', 'app="packaged/' + name + '.app"',
     'mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"', ...commands,
-    'cp assets/app.icns "$app/Contents/Resources/app.icns"',
+    ...(icon ? ['cp assets/app.icns "$app/Contents/Resources/app.icns"'] : []),
     'cat > "$app/Contents/Info.plist" <<\'PLIST\'', ...plist, 'PLIST', ''
   ];
   await fs.writeFile(path.join(folder, 'package-macos.sh'), script.join('\n'), { flag: 'wx' });
   await fs.appendFile(path.join(project, '.gitignore'), '\n/packaged/\n');
-  await appendReadme(project, 'On macOS, run `sh scripts/package-macos.sh` to build the `.app` bundle with its icon in `packaged/`.');
+  await appendDistribution(project, 'On macOS, run `sh scripts/package-macos.sh` to build the `.app` bundle in `packaged/`.');
 }
 
 async function dotnetIcons(project, template, name, icons) {
   const ico = icons.has('.ico');
-  const raylib = template.id === 'raylib-csharp';
+  const raylib = template.group === 'raylib';
   const png = raylib && icons.has('.png');
   if (ico || png) {
     const manifest = (await fs.readdir(project)).find(file => file.endsWith('.csproj'));
@@ -218,13 +250,18 @@ async function dotnetIcons(project, template, name, icons) {
       'Raylib.SetTargetFPS(60);'
     ].join('\n')));
   }
-  if (raylib && icons.has('.icns')) await macBundle(project, template, name);
+  if (raylib) await macBundle(project, template, name, icons.has('.icns'));
+  await fs.appendFile(path.join(project, '.gitignore'), '\n/dist/\n');
+  const publish = `Run \`dotnet publish -c Release --use-current-runtime --self-contained -o dist\` on ${raylib ? 'Windows or Linux' : 'Windows'}. Share the whole \`dist/\` folder, including the bundled .NET runtime.`;
+  if (raylib) await fs.appendFile(path.join(project, 'README.md'), '\n' + publish + '\n');
+  else await appendDistribution(project, publish);
   if (ico) await appendReadme(project, 'The Windows app host embeds `assets/app.ico` when built with `dotnet build` or `dotnet publish`.');
 }
 
-async function configureDesktopIcons(project, template, name, options, icons, raster) {
-  if (template.id === 'tauri') return tauriIcons(project, icons, raster);
-  await saveAssets(project, icons);
+async function configureDesktopApp(project, template, name, options, icons, raster) {
+  if (template.id === 'tauri') return icons.size ? tauriIcons(project, icons, raster) : undefined;
+  if (template.id === 'flutter-desktop') return icons.size ? flutterDesktopIcons(project, icons, raster) : undefined;
+  if (icons.size) await saveAssets(project, icons);
   if (template.id === 'godot' || template.id.startsWith('godot-native-')) {
     const settings = [['.png', 'icon'], ['.ico', 'windows_native_icon'], ['.icns', 'macos_native_icon']]
       .filter(([extension]) => icons.has(extension))
@@ -233,11 +270,13 @@ async function configureDesktopIcons(project, template, name, options, icons, ra
       source.replace('[application]', '[application]\n\n' + settings.join('\n')));
     return appendReadme(project, 'The project uses the icons in `assets/`. In the Windows export preset, select `assets/app.ico` as the Application Icon when available.');
   }
-  if (template.id === 'electron') return electronIcons(project, icons);
+  if (template.id === 'electron') return icons.size ? electronIcons(project, icons) : undefined;
   if (template.id === 'python-desktop') return pythonIcons(project, name, options, icons);
   if (template.id === 'java-desktop' || template.id === 'kotlin-desktop') return jvmIcons(project, template, name, options, icons);
-  if (template.kind === 'dotnet' || template.id === 'raylib-csharp') return dotnetIcons(project, template, name, icons);
-  if (icons.has('.icns')) return macBundle(project, template, name);
+  if (template.kind === 'dotnet' || (template.language === 'C#' && template.group === 'raylib')) {
+    return dotnetIcons(project, template, name, icons);
+  }
+  if (['swift-desktop', 'objc-desktop'].includes(template.id)) return macBundle(project, template, name, icons.has('.icns'));
 }
 
-module.exports = { configureDesktopIcons };
+module.exports = { configureDesktopApp };

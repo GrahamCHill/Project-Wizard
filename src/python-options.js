@@ -28,7 +28,8 @@ function parsePythonOptions(input, lines, framework, template = {}) {
     throw new Error('This template requires Python ' + template.pythonMinimum + ' or newer.');
   }
   const packages = new Map();
-  for (const line of [...(template.pythonPackages || []), ...lines]) {
+  const defaults = [...(template.pythonPackages || []), ...(framework ? template.pythonTestPackages || [] : [])];
+  for (const line of [...defaults, ...lines]) {
     const match = line.match(/^([a-zA-Z0-9][a-zA-Z0-9_.-]*)(?:\[[a-zA-Z0-9_,.-]+\])?(?:(?:~=|==|!=|<=|>=|<|>)[a-zA-Z0-9.*+!-]+(?:,(?:~=|==|!=|<=|>=|<|>)[a-zA-Z0-9.*+!-]+)*)?$/);
     if (!match) throw new Error('Use one Python package per line, for example requests or requests>=2,<3.');
     const name = match[1].toLowerCase().replace(/[-_.]+/g, '-');
@@ -97,8 +98,11 @@ async function preparePython(project, template, name, options) {
   if (framework) {
     await fs.mkdir(path.join(project, 'tests'));
     const sample = 'def add(left: int, right: int) -> int:\n    return left + right\n';
-    const source = framework === 'pytest' ? sample + '\n\ndef test_add():\n    assert add(2, 3) == 5\n' :
+    let source = framework === 'pytest' ? sample + '\n\ndef test_add():\n    assert add(2, 3) == 5\n' :
       'import unittest\n\n\n' + sample + '\n\nclass ExampleTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n';
+    if (['python-fastapi', 'python-django', 'python-flask'].includes(template.id)) {
+      source = await fs.readFile(path.join(__dirname, '..', 'templates', '_shared', 'python-web-tests', template.id + '.py'), 'utf8');
+    }
     await fs.writeFile(path.join(project, 'tests', 'test_example.py'), source, { flag: 'wx' });
     const command = framework === 'pytest' ? 'pytest' : 'unittest discover -s tests';
     readme.push('## Tests', '', '~~~sh', runner + ' -m ' + command, '~~~', '');

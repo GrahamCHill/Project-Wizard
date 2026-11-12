@@ -13,10 +13,16 @@
   "engines": {
     "vscode": "^1.96.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "main": "./src/extension.js",
-  "activationEvents": ["onStartupFinished"],
-  "extensionKind": ["workspace"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": false,
@@ -64,14 +70,41 @@
           "type": "object",
           "scope": "application",
           "description": "Configure Project Wizard startup and template visibility.",
-          "default": { "disabledLanguages": [], "disabledTemplates": [], "enableVrTemplates": false, "enableLatexTemplates": false, "openOnStartup": false },
+          "default": {
+            "disabledLanguages": [],
+            "disabledTemplates": [],
+            "enableVrTemplates": false,
+            "enableLatexTemplates": false,
+            "openOnStartup": false
+          },
           "additionalProperties": false,
           "properties": {
-            "disabledLanguages": { "type": "array", "items": { "type": "string" }, "description": "Language names hidden in the catalog." },
-            "disabledTemplates": { "type": "array", "items": { "type": "string" }, "description": "Template IDs hidden in the catalog." },
-            "enableVrTemplates": { "type": "boolean", "description": "Show the optional VR template set." },
-            "enableLatexTemplates": { "type": "boolean", "description": "Show the optional LaTeX templates." },
-            "openOnStartup": { "type": "boolean", "description": "Open Project Wizard when VS Code starts." }
+            "disabledLanguages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Language names hidden in the catalog."
+            },
+            "disabledTemplates": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Template IDs hidden in the catalog."
+            },
+            "enableVrTemplates": {
+              "type": "boolean",
+              "description": "Show the optional VR template set."
+            },
+            "enableLatexTemplates": {
+              "type": "boolean",
+              "description": "Show the optional LaTeX templates."
+            },
+            "openOnStartup": {
+              "type": "boolean",
+              "description": "Open Project Wizard when VS Code starts."
+            }
           }
         }
       }
@@ -82,7 +115,9 @@
     "package": "vsce package"
   },
   "dependencies": {
+    "@img/sharp-wasm32": "0.35.5",
     "buffer-crc32": "0.2.13",
+    "sharp": "0.35.5",
     "yauzl": "3.4.0"
   },
   "devDependencies": {

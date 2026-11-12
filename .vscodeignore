@@ -5,3 +5,5 @@ test/**
 package-lock.json
 **/*.log
 *.vsix
+node_modules/@img/sharp-*/**
+!node_modules/@img/sharp-wasm32/**

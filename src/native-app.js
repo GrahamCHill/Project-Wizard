@@ -1,11 +1,20 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { replaceTokens } = require('./projects');
+const { validateRaster } = require('./icon-data');
+
+function mobileIconTemplate(template) {
+  return template.group === 'mobile' || template.androidCmake || template.id === 'kotlin-android-xr';
+}
 
 function executableIconFormats(template) {
-  if (!template?.cmakeTarget || template.androidCmake || template.cmakeLibrary) return [];
-  return [['win32', '.ico'], ['darwin', '.icns']].filter(([platform]) =>
-    !template.platforms || template.platforms.includes(platform)).map(([, extension]) => extension);
+  if (!template) return [];
+  if (mobileIconTemplate(template)) return ['.png', '.webp'];
+  const desktop = template.group === 'desktop' || template.id === 'raylib-csharp' ||
+    template.id === 'godot' || template.id.startsWith('godot-native-');
+  if (!(template.cmakeTarget && !template.cmakeLibrary) && !desktop) return [];
+  return ['.png', '.webp', ...[['win32', '.ico'], ['darwin', '.icns']].filter(([platform]) =>
+    !template.platforms || template.platforms.includes(platform)).map(([, extension]) => extension)];
 }
 
 function validIcon(extension, data) {
@@ -36,12 +45,16 @@ async function loadExecutableIcons(files) {
   for (const file of files) {
     const name = path.basename(file);
     const extension = path.extname(name).toLowerCase();
-    if (extension !== '.ico' && extension !== '.icns') throw new Error('Choose a Windows .ico or a macOS .icns file.');
+    const raster = extension === '.png' || extension === '.webp';
+    if (!raster && extension !== '.ico' && extension !== '.icns') throw new Error('Choose a PNG, WebP, ICO, or ICNS image.');
+    if (raster && (icons.has('.png') || icons.has('.webp'))) throw new Error('Choose one PNG or WebP source image.');
     if (icons.has(extension)) throw new Error('Choose up to one .ico file and one .icns file.');
     const info = await fs.stat(file);
     if (!info.isFile() || info.size > 32 * 1024 * 1024) throw new Error('Choose an icon file up to 32 MB.');
     const data = await fs.readFile(file);
-    if (!validIcon(extension, data)) throw new Error(name + ' is not a valid ' + extension + ' file.');
+    if (!(raster ? await validateRaster(data, extension) : validIcon(extension, data))) {
+      throw new Error(name + ' is not a valid ' + extension + ' file. PNG and WebP icons may be up to 4096 × 4096 pixels.');
+    }
     icons.set(extension, { name, data });
   }
   return icons;
@@ -52,13 +65,14 @@ async function configureNativeApp(project, template, name, options) {
   const icons = options.icons;
   const windowsIcon = icons?.get('.ico');
   const macIcon = icons?.get('.icns');
+  const linuxIcon = icons?.get('.png') && (!template.platforms || template.platforms.includes('linux'));
   const macSupported = !template.platforms || template.platforms.includes('darwin');
   const macBundle = macSupported && (icons?.size || ['desktop', 'graphics', 'raylib'].includes(template.group));
   const target = template.cmakeTarget;
   const cmake = [];
   const notes = [];
 
-  if (windowsIcon || macIcon) {
+  if (icons?.size) {
     const assets = path.join(project, 'assets');
     await fs.mkdir(assets, { recursive: true });
     for (const [extension, icon] of icons) {
@@ -76,6 +90,17 @@ async function configureNativeApp(project, template, name, options) {
         'endif()', '');
       notes.push('Windows embeds `assets/app.ico` in the executable.');
     }
+  }
+  if (linuxIcon) {
+    const id = 'app-' + replaceTokens('__PROJECT_SLUG__', name);
+    await fs.writeFile(path.join(project, 'assets', id + '.desktop'),
+      '[Desktop Entry]\nType=Application\nName=' + name + '\nExec=' + id + '\nIcon=' + id +
+      '\nTerminal=' + (template.group === 'cli' ? 'true' : 'false') + '\n', { flag: 'wx' });
+    cmake.push('if(CMAKE_SYSTEM_NAME STREQUAL "Linux")',
+      `    install(PROGRAMS "$<TARGET_FILE:${target}>" DESTINATION bin RENAME ${id})`,
+      `    install(FILES assets/app.png DESTINATION share/icons/hicolor/256x256/apps RENAME ${id}.png)`,
+      `    install(FILES assets/${id}.desktop DESTINATION share/applications)`, 'endif()', '');
+    notes.push('On Linux, run `cmake --install build --prefix "$HOME/.local"` to install the app and its desktop entry. Ensure `$HOME/.local/bin` is on PATH.');
   }
   if (macBundle) {
     cmake.push('if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")',
@@ -101,4 +126,4 @@ async function configureNativeApp(project, template, name, options) {
   }
 }
 
-module.exports = { configureNativeApp, executableIconFormats, loadExecutableIcons };
+module.exports = { configureNativeApp, executableIconFormats, loadExecutableIcons, mobileIconTemplate };

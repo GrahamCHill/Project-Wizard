@@ -1,7 +1,9 @@
 import argparse
 import json
 from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
+
+open_local = build_opener(ProxyHandler({})).open
 
 
 def chat(model, prompt):
@@ -15,7 +17,7 @@ def chat(model, prompt):
         data=body,
         headers={"Content-Type": "application/json"},
     )
-    with urlopen(request, timeout=120) as response:
+    with open_local(request, timeout=120) as response:
         return json.load(response)["message"]["content"]
 
 

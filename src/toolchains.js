@@ -600,11 +600,18 @@ async function findSupplementalTools(settings, probe, directories, appleSdk) {
     await subdirectories(path.join(env.ProgramFiles, 'Blender Foundation'), '') : [];
   const flutterFolders = directories(env.FLUTTER_ROOT && path.join(env.FLUTTER_ROOT, 'bin'),
     path.join(home, 'flutter', 'bin'), path.join(home, 'development', 'flutter', 'bin'));
+  const blenderPattern = /\bBlender (\d+\.\d+(?:\.\d+)?)/i;
+  const findBlender = async () => {
+    if (env.BLENDER_PATH && path.isAbsolute(env.BLENDER_PATH)) {
+      const output = await commandOutput(env.BLENDER_PATH, ['--version'], settings).catch(() => '');
+      const version = output.match(blenderPattern)?.[1];
+      if (version) return { version, file: env.BLENDER_PATH };
+    }
+    return probe(['blender'], ['--version'], blenderPattern,
+      [...blenderFolders, mac && '/Applications/Blender.app/Contents/MacOS']);
+  };
   const [blender, composer, latex, ollama, xcodegen, iosVersion, flutterFiles] = await Promise.all([
-    probe(['blender'], ['--version'], /\bBlender (\d+\.\d+(?:\.\d+)?)/i, [
-      ...blenderFolders, mac && '/Applications/Blender.app/Contents/MacOS',
-      env.BLENDER_PATH && path.dirname(env.BLENDER_PATH)
-    ]),
+    findBlender(),
     probe(['composer'], ['--version'], /Composer(?: version)?\s+(\d+\.\d+\.\d+)/i),
     probe(['pdflatex'], ['--version'], /pdfTeX[^\r\n]*?(\d+\.\d+(?:\.\d+)?)/i),
     probe(['ollama'], ['--version'], /\bversion(?: is)?\s+(\d+\.\d+\.\d+)/i, [

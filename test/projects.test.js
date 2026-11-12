@@ -210,6 +210,56 @@ test('uses installed game editor versions and connects generated engine assets',
   }
 });
 
+test('keeps LaTeX opt-in and iOS native templates macOS-only', () => {
+  const latex = starters.find(template => template.id === 'latex-article');
+  const ios = starters.find(template => template.id === 'ios-swiftui');
+  assert.deepEqual(enabledTemplates([latex], readCatalogSettings()), []);
+  assert.deepEqual(enabledTemplates([latex], readCatalogSettings({ enableLatexTemplates: true })), [latex]);
+  assert.deepEqual(enabledTemplates([latex], readCatalogSettings({
+    enableLatexTemplates: true, disabledLanguages: ['LaTeX']
+  })), []);
+  assert.deepEqual(templatesForPlatform([ios], 'win32'), []);
+  assert.deepEqual(templatesForPlatform([ios], 'linux'), []);
+  assert.deepEqual(templatesForPlatform([ios], 'darwin'), [ios]);
+});
+
+test('installs built-in Python dependencies in the selected environment and uses Blender Python', async t => {
+  const root = await fixture(t);
+  const classifier = starters.find(template => template.id === 'ml-classifier');
+  const blender = starters.find(template => template.id === 'blender-extension');
+  assert.equal(projectOptions(blender), undefined);
+  assert.equal(templateAvailability(classifier, { uv: {} }, 'win32').ready, true);
+  assert.throws(() => readProjectOptions(classifier, { pythonVersion: '3.10' }), /Python 3.11/);
+  const choices = projectOptions(classifier, {}, [
+    { version: '3.10.9', usable: true }, { version: '3.13.5', usable: true }
+  ]);
+  assert.deepEqual(choices.environments.find(item => item.id === 'venv').versions, ['3.13.5']);
+  for (const [environment, file] of [['venv', 'requirements.txt'], ['conda', 'environment.yml'], ['uv', 'pyproject.toml']]) {
+    const options = readProjectOptions(classifier, { environment, dependencies: 'joblib' });
+    const project = await createProject(root, environment, async (target, parent) => {
+      await writeStarter(classifier, environment, target, parent);
+      await applyProjectOptions(target, classifier, environment, options);
+    });
+    assert.match(await fs.readFile(path.join(project, file), 'utf8'), /scikit-learn>=1\.7,<2/);
+    assert.match(await fs.readFile(path.join(project, file), 'utf8'), /joblib/);
+  }
+});
+
+test('configures Godot C++ as a shared library with native tests', async t => {
+  const root = await fixture(t);
+  const template = starters.find(item => item.id === 'godot-native-cpp');
+  assert.ok(projectOptions(template).executableIconFormats.includes('.png'));
+  const project = await createProject(root, 'Native Demo', async (target, parent) => {
+    await writeStarter(template, 'Native Demo', target, parent);
+    await applyProjectOptions(target, template, 'Native Demo', readProjectOptions(template, { testing: true }));
+  });
+  const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
+  assert.match(cmake, /add_library\(pw_native SHARED/);
+  assert.match(cmake, /starter_logic PROPERTIES POSITION_INDEPENDENT_CODE ON/);
+  assert.doesNotMatch(cmake, /MACOSX_BUNDLE/);
+  assert.match(await fs.readFile(path.join(project, 'native.gdextension'), 'utf8'), /entry_symbol = "pw_native_init"/);
+});
+
 test('maps tool requirements to install help and distinguishes OS support from missing tools', () => {
   const templates = new Map(starters.map(template => [template.id, template]));
   const java = { version: '25', file: '/jdk/bin/javac' };
@@ -324,9 +374,9 @@ test('scaffolds executable icons and a macOS bundle alongside a Raylib web targe
   const template = starters.find(item => item.id === 'raylib-cpp');
   const cuda = starters.find(item => item.id === 'cuda-cmake');
   const android = starters.find(item => item.id === 'raylib-vr-android-c');
-  assert.deepEqual(projectOptions(template).executableIconFormats, ['.ico', '.icns']);
-  assert.deepEqual(projectOptions(cuda).executableIconFormats, ['.ico']);
-  assert.deepEqual(projectOptions(android).executableIconFormats, []);
+  assert.deepEqual(projectOptions(template).executableIconFormats, ['.png', '.webp', '.ico', '.icns']);
+  assert.deepEqual(projectOptions(cuda).executableIconFormats, ['.png', '.webp', '.ico']);
+  assert.deepEqual(projectOptions(android).executableIconFormats, ['.png', '.webp']);
   assert.throws(() => readProjectOptions(template, { executableIcon: true }), /Choose an executable icon file/);
   assert.throws(() => readProjectOptions(template, { executableIcon: true, targets: ['emscripten'] }), /native executable target/);
 
@@ -363,6 +413,48 @@ test('scaffolds executable icons and a macOS bundle alongside a Raylib web targe
   assert.match(cmake, /MACOSX_PACKAGE_LOCATION Resources/);
   assert.match(cmake, /MACOSX_BUNDLE_ICON_FILE "app.icns"/);
   assert.match(cmake, /OUTPUT_NAME index SUFFIX "\.html"/);
+});
+
+test('converts raster icons for desktop and mobile project scaffolds', async t => {
+  const root = await fixture(t);
+  const sharp = require('sharp');
+  for (const template of starters.filter(template => ['desktop', 'mobile'].includes(template.group))) {
+    assert.ok(projectOptions(template).executableIconFormats.includes('.webp'), template.id);
+  }
+  for (const format of ['png', 'webp']) {
+    const file = path.join(root, 'Example.' + format);
+    await sharp({ create: { width: 48, height: 32, channels: 4, background: '#1388aaff' } }).toFormat(format).toFile(file);
+    const icons = await loadExecutableIcons([file]);
+    for (const id of ['c-cmake', 'electron', 'android-compose', 'ios-swiftui', 'expo-mobile']) {
+      const template = starters.find(item => item.id === id);
+      const name = id + '-' + format;
+      const options = readProjectOptions(template, { executableIcon: true }, icons);
+      const project = await createProject(root, name, async (target, parent) => {
+        await writeStarter(template, name, target, parent);
+        await applyProjectOptions(target, template, name, options);
+      });
+      if (id === 'android-compose') {
+        assert.match(await fs.readFile(path.join(project, 'src/main/AndroidManifest.xml'), 'utf8'), /@mipmap\/pw_app_icon/);
+        const { width } = await sharp(path.join(project, 'src/main/res/mipmap-xxxhdpi/pw_app_icon.png')).metadata();
+        assert.equal(width, 192);
+      } else if (id === 'ios-swiftui') {
+        const file = path.join(project, 'Sources/Assets.xcassets/AppIcon.appiconset/Icon-1024.png');
+        const { width, height, hasAlpha } = await sharp(file).metadata();
+        assert.deepEqual([width, height, hasAlpha], [1024, 1024, false]);
+        assert.match(await fs.readFile(path.join(project, 'project.yml'), 'utf8'), /ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon/);
+      } else if (id === 'expo-mobile') {
+        const { expo } = JSON.parse(await fs.readFile(path.join(project, 'app.json'), 'utf8'));
+        assert.equal(expo.icon, './assets/app-icon.png');
+        assert.equal(expo.android.adaptiveIcon.foregroundImage, './assets/adaptive-icon.png');
+      } else {
+        const native = await loadExecutableIcons(['.ico', '.icns'].map(extension => path.join(project, 'assets', 'app' + extension)));
+        assert.equal(native.get('.ico').data.readUInt16LE(4), 7);
+        const png = path.join(project, 'assets/app.png');
+        assert.equal((await sharp(png).metadata()).width, 256);
+        if (id === 'electron') assert.match(await fs.readFile(path.join(project, 'forge.config.cjs'), 'utf8'), /packagerConfig:.*icon/);
+      }
+    }
+  }
 });
 
 test('creates Maven and Gradle Java applications with selected dependencies and JUnit', async t => {
@@ -523,7 +615,7 @@ test('adds each alternative test framework to its starter', async t => {
 });
 
 test('offers both React Native starters with the native CLI Node versions', () => {
-  const mobile = starters.filter(template => template.group === 'mobile');
+  const mobile = starters.filter(template => ['expo-mobile', 'react-native-mobile'].includes(template.id));
   assert.deepEqual(mobile.map(template => template.kind), ['starter', 'react-native']);
   assert.equal(reactNativeIdentifier('9 React-Native App'), 'App9ReactNativeApp');
   assert.equal(supportsReactNative('22.12.0'), false);

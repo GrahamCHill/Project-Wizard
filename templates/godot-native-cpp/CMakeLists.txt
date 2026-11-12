@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.24)
 project(__PROJECT_IDENTIFIER__ LANGUAGES CXX)
 
+if(NOT CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
+    file(TOUCH "${CMAKE_BINARY_DIR}/.gdignore")
+endif()
+
 include(FetchContent)
 set(GODOTCPP_API_VERSION "4.3" CACHE STRING "Minimum Godot API version")
 set(GODOTCPP_BUILD_PROFILE "${CMAKE_CURRENT_SOURCE_DIR}/build_profile.json" CACHE FILEPATH "Binding classes")

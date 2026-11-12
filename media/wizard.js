@@ -216,8 +216,9 @@ function updateExecutableIcon(targets) {
   const description = names.join(', ');
   if (namesLabel.textContent !== description) namesLabel.textContent = description;
   namesLabel.hidden = !names.length;
-  byId('executable-icon-help').textContent = formats.length === 2 ?
-    'Choose a Windows .ico, a macOS .icns, or both.' : 'Choose a Windows .ico file.';
+  const native = formats.filter(format => format === '.ico' || format === '.icns');
+  byId('executable-icon-help').textContent = 'Choose a PNG or WebP image.' +
+    (native.length ? ' You can also provide ' + native.join(' or ') + ' directly.' : '');
   return enabled && names.length === 0;
 }
 

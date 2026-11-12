@@ -21,8 +21,8 @@ const { executableIconFormats, loadExecutableIcons } = require('./native-app');
 
 const configurationKey = 'projectWizard.zipTemplatesDirectory';
 const catalogKey = 'projectWizard.catalog';
-const projectFiles = '**/{*.csproj,*.fsproj,*.vbproj,Directory.Packages.props,CMakeLists.txt,package.json,project.godot,*.uproject,ProjectVersion.txt,tauri.conf.json}';
-const generatedFiles = '**/{.git,node_modules,bin,obj,build,.next,.nuxt,.output,out,target,.godot,Library,Binaries,Intermediate,.project-wizard-*}/**';
+const projectFiles = '**/{*.csproj,*.fsproj,*.vbproj,Directory.Packages.props,CMakeLists.txt,package.json,project.godot,*.uproject,ProjectVersion.txt,tauri.conf.json,blender_manifest.toml,composer.json,pubspec.yaml}';
+const generatedFiles = '**/{.git,node_modules,bin,obj,build,.next,.nuxt,.output,out,target,.godot,Library,Binaries,Intermediate,vendor,.dart_tool,.venv,.project-wizard-*}/**';
 
 function zipDirectory() {
   return vscode.workspace.getConfiguration().get(configurationKey, '').trim();
@@ -179,7 +179,7 @@ function wizardHtml(webview, extensionUri) {
                 <p id="target-choice-help" class="option-hint" hidden>Choose at least one target platform.</p>
               </fieldset>
               <div id="executable-icon-field" hidden>
-                <label class="option-check"><input id="executable-icon" type="checkbox"> Set executable icon</label>
+                <label class="option-check"><input id="executable-icon" type="checkbox"> Set app icon</label>
                 <div id="executable-icon-picker" hidden>
                   <button id="choose-executable-icons" type="button" class="secondary" aria-describedby="executable-icon-help">Choose icon files…</button>
                   <p id="executable-icon-help" class="option-hint"></p>
@@ -498,12 +498,12 @@ function activate(context) {
       session.busy = true;
       try {
         const files = await vscode.window.showOpenDialog({
-          title: 'Choose executable icons',
+          title: 'Choose app icons',
           defaultUri: vscode.Uri.file(session.parent),
           canSelectFiles: true,
           canSelectFolders: false,
-          canSelectMany: formats.length > 1,
-          filters: { 'Executable icons': formats.map(extension => extension.slice(1)) },
+          canSelectMany: formats.length > 2,
+          filters: { 'App icons': formats.map(extension => extension.slice(1)) },
           openLabel: 'Use icons'
         });
         if (!files?.length) return;

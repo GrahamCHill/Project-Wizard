@@ -5,7 +5,10 @@ const { environments, parsePythonOptions, preparePython, pythonVersionSupported,
 const { addDotnetTests, addJvmTests, addSwiftTests } = require('./extra-tests');
 const { replaceTokens } = require('./projects');
 const { configureJava, parseJavaDependencies } = require('./java-options');
-const { configureNativeApp, executableIconFormats } = require('./native-app');
+const { configureNativeApp, executableIconFormats, mobileIconTemplate } = require('./native-app');
+const { iconVariants } = require('./icon-data');
+const { configureDesktopIcons } = require('./desktop-icons');
+const { configureMobileIcons } = require('./mobile-icons');
 const { templateAvailability } = require('./toolchains');
 
 const npmTemplates = ['javascript-frontend', 'javascript-server', 'typescript-frontend', 'expo-mobile', 'electron'];
@@ -44,6 +47,12 @@ function buildChoice(label, choices, tools, platform, manager) {
 }
 
 function projectOptions(template, tools = {}, versions = [], platform = process.platform, manager) {
+  const options = buildOptions(template, tools, versions, platform, manager);
+  const formats = executableIconFormats(template);
+  return formats.length ? { type: 'app', ...options, executableIconFormats: formats } : options;
+}
+
+function buildOptions(template, tools, versions, platform, manager) {
   if (template.kind === 'react-native') return npmOptions;
   if (template.kind === 'npm-generator') return { ...npmOptions, ...testOptions('node', 'vitest') };
   if (template.kind === 'dotnet' || template.id === 'raylib-csharp') {
@@ -52,7 +61,6 @@ function projectOptions(template, tools = {}, versions = [], platform = process.
   if (template.kind !== 'starter') return;
   if (template.cmakeTarget) {
     return { type: 'cmake', libraries: cmakeLibraries(template).map(({ id, label }) => ({ id, label })),
-      executableIconFormats: executableIconFormats(template),
       dependencies: 'Additional CMake archives', example: 'name target https://example.com/library.tar.gz [sha256]',
       targetChoice: template.webTarget ? buildChoice('Target platforms', [
         { id: 'native', label: 'Desktop (native)', tools: template.tools, platformTools: template.platformTools,
@@ -84,7 +92,7 @@ function projectOptions(template, tools = {}, versions = [], platform = process.
   if (npmTemplates.includes(template.id)) {
     return { ...npmOptions, ...testOptions(...(template.id === 'expo-mobile' ? ['node'] : ['node', 'vitest'])) };
   }
-  if (['kotlin-multiplatform', 'kotlin-android-xr'].includes(template.id)) return;
+  if (['kotlin-multiplatform', 'kotlin-android-xr', 'android-compose', 'ios-swiftui'].includes(template.id)) return;
   if (template.language === 'Kotlin') return { type: 'jvm-tests', ...testOptions('junit') };
   if (template.language === 'Swift') return { type: 'swift-tests', ...testOptions('xctest') };
   if (nativeTests[template.language]) return { type: 'native', ...testOptions(template.language) };
@@ -116,9 +124,6 @@ function readProjectOptions(template, input = {}, selectedIcons) {
   const frameworks = config.frameworks || [];
   const framework = input.testing === true ? input.framework || frameworks[0]?.id : undefined;
   if (framework && !frameworks.some(item => item.id === framework)) throw new Error('Choose a supported test framework.');
-  if (config.type === 'python') {
-    return { type: config.type, tkinter: template.id === 'python-desktop', ...parsePythonOptions(input, lines, framework, template) };
-  }
   const builds = config.buildChoice?.options;
   const build = builds && (input.build || builds[0].id);
   if (build && !builds.some(option => option.id === build)) throw new Error('Choose a supported build option.');
@@ -133,6 +138,17 @@ function readProjectOptions(template, input = {}, selectedIcons) {
   }
   let packages;
   let icons;
+  if (input.executableIcon === true) {
+    if (!config.executableIconFormats?.length || (targets && !targets.includes('native'))) {
+      throw new Error('Select a native executable target to set an icon.');
+    }
+    icons = new Map([...(selectedIcons || [])].filter(([format]) => config.executableIconFormats.includes(format)));
+    if (!icons.size) throw new Error('Choose an executable icon file.');
+  }
+  if (config.type === 'python') {
+    return { type: config.type, tkinter: template.id === 'python-desktop', icons,
+      ...parsePythonOptions(input, lines, framework, template) };
+  }
   if (config.type === 'java') {
     if (build === 'jdk' && lines.length) throw new Error('Choose Maven or Gradle to add Java dependencies.');
     packages = parseJavaDependencies(lines);
@@ -142,13 +158,6 @@ function readProjectOptions(template, input = {}, selectedIcons) {
     }
   } else if (config.type === 'cmake') {
     packages = parseCmakeLibraries(template, Array.isArray(input.libraries) ? input.libraries : [], lines);
-    if (input.executableIcon === true) {
-      if (!config.executableIconFormats.length || (targets && !targets.includes('native'))) {
-        throw new Error('Select a native executable target to set an icon.');
-      }
-      icons = new Map([...(selectedIcons || [])].filter(([format]) => config.executableIconFormats.includes(format)));
-      if (!icons.size) throw new Error('Choose an executable icon file.');
-    }
   } else if (config.type === 'npm') {
     packages = parseNpmLibraries(lines);
   }
@@ -209,6 +218,16 @@ async function configureNpm(project, template, name, options) {
 
 async function applyProjectOptions(project, template, name, options, parent, log) {
   if (!options) return;
+  if (!options.icons) return applyBuildOptions(project, template, name, options, parent, log);
+  const { outputs, raster } = await iconVariants(options.icons, executableIconFormats(template));
+  const mobile = mobileIconTemplate(template);
+  if (raster && !mobile) outputs.set('.png', { data: await raster.png(256) });
+  await applyBuildOptions(project, template, name, { ...options, icons: outputs }, parent, log);
+  if (mobile) return configureMobileIcons(project, template, name, raster);
+  if (options.type !== 'cmake' || template.cmakeLibrary) return configureDesktopIcons(project, template, name, options, outputs, raster);
+}
+
+async function applyBuildOptions(project, template, name, options, parent, log) {
   if (options.type === 'cmake') {
     if (options.targets?.includes('emscripten')) await configureEmscripten(project, template, name, options.targets);
     await configureNativeApp(project, template, name, options);

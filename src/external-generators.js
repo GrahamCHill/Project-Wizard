@@ -17,8 +17,8 @@ const externalGenerators = [
   {
     id: 'flutter-mobile', kind: 'external-generator', group: 'mobile', language: 'Dart', label: 'Flutter Mobile (Android + iOS)',
     description: 'A Flutter counter app with Android and iOS projects and a widget test.',
-    tools: ['flutter'], generatorTools: ['flutter'],
-    requirement: 'Flutter SDK. Use Android SDK for Android or macOS with Xcode for iOS builds.',
+    tools: ['flutter', 'git'], generatorTools: ['flutter', 'git'],
+    requirement: 'Flutter SDK and Git. Use Android SDK for Android or macOS with Xcode for iOS builds.',
     next: 'Run flutter pub get and follow the generated README.'
   }
 ];
@@ -43,7 +43,8 @@ async function createExternalProject(template, name, project, tools, log) {
     ['create', '--no-pub', '--platforms=android,ios', '--org', 'com.example', '--project-name',
       replaceTokens('app___PROJECT_SNAKE__', name), '.'];
   const env = { ...process.env, CI: '1', FLUTTER_SUPPRESS_ANALYTICS: 'true' };
-  if (laravel) env.PATH = path.dirname(tools['laravel-php'].file) + path.delimiter + (env.PATH || '');
+  const support = laravel ? tools['laravel-php'] : tools.git;
+  env.PATH = path.dirname(support.file) + path.delimiter + (process.env.PATH || '');
   const settings = { cwd: project, env, windowsHide: true, timeout: 300000, maxBuffer: 4 * 1024 * 1024 };
   try {
     log?.('Generating ' + template.label + '.');
@@ -79,10 +80,10 @@ async function createExternalProject(template, name, project, tools, log) {
     '~~~sh',
     'php -r "file_exists(\'database/database.sqlite\') || touch(\'database/database.sqlite\');"',
     'composer setup',
-    'composer run dev',
+    'php artisan serve',
     '~~~',
     '',
-    'Open http://127.0.0.1:8000. Run php artisan test after setup.'
+    'Open http://127.0.0.1:8000. Run npm run dev in a second terminal for Vue hot reload. Run php artisan test after setup.'
   ] : [
     '~~~sh', 'flutter pub get', 'flutter test', 'flutter run', '~~~', '',
     'Use an Android emulator or connected device for Android. Build and run the iOS target on macOS with Xcode.'

@@ -205,6 +205,12 @@ function detectFrameworks(filename, contents) {
       .filter(([id]) => Object.hasOwn(dependencies, id)).map(([, label]) => label);
   }
   if (file === 'tauri.conf.json') return parseProjectJson(contents) ? ['Tauri'] : [];
+  if (file === 'composer.json') {
+    const manifest = parseProjectJson(contents);
+    return typeof manifest?.require?.['laravel/framework'] === 'string' ? ['Laravel'] : [];
+  }
+  if (file === 'blender_manifest.toml') return /^blender_version_min\s*=/m.test(contents) ? ['Blender'] : [];
+  if (file === 'pubspec.yaml') return /^\s+sdk:\s*flutter\s*$/m.test(contents) ? ['Flutter'] : [];
   if (file.endsWith('.uproject')) return parseProjectJson(contents)?.FileVersion ? ['Unreal Engine'] : [];
   if (file === 'project.godot') return /^config_version\s*=\s*\d+/m.test(contents) ? ['Godot'] : [];
   if (file === 'projectversion.txt') return /^m_EditorVersion:\s*\d+\./m.test(contents) ? ['Unity'] : [];

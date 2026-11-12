@@ -18,8 +18,10 @@ function cmakeLibraries(template) {
 
 function parseCmakeLibraries(template, chosen, lines) {
   const selected = cmakeLibraries(template).filter(library => chosen.includes(library.id));
+  const bundled = template.id === 'cpp-lua-desktop' ? ['lua', 'lua_runtime', 'copy_script'] :
+    template.id === 'godot-native-cpp' ? ['godot_cpp', 'godot-cpp'] : [];
   const names = new Set(['app', 'game', 'raylib', 'sdl2', 'sdl3', 'wxwidgets', 'googletest', 'catch2', 'example_test', 'starter_logic',
-    ...selected.map(library => library.id)]);
+    template.cmakeTarget, ...bundled, ...selected.map(library => library.id)]);
   for (const line of lines) {
     const [id, target, url, hash, extra] = line.split(/\s+/);
     if (!/^[a-z][a-z0-9_-]*$/.test(id) ||

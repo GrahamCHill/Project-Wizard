@@ -234,11 +234,11 @@ function updateDependencyField() {
 }
 
 function renderProjectOptions(template) {
+  projectSetup.hidden = !template?.options;
   if (optionTemplate === template) return;
   const preserve = optionTemplate?.id === template?.id;
   optionTemplate = template;
   const options = template?.options;
-  projectSetup.hidden = !options;
   if (!options) return;
   if (!preserve) {
     projectSetup.open = true;
@@ -327,9 +327,10 @@ function updateForm() {
 
   byId('selection').hidden = !template;
   byId('selected-name').textContent = template?.label || '';
-  renderProjectOptions(template);
-  const build = selectedBuild();
-  const targets = selectedTargets();
+  if (template || !loading || !selected) renderProjectOptions(template);
+  else projectSetup.hidden = true;
+  const build = template && selectedBuild();
+  const targets = template ? selectedTargets() : [];
   const hasTargets = Boolean(template?.options?.targetChoice);
   const requirement = hasTargets ? targets.map(option => option.requirement).filter(Boolean).join(' ') : build?.requirement || template?.requirement;
   byId('selected-requirement').textContent = requirement || '';
@@ -357,7 +358,7 @@ function updateForm() {
   byId('target-choice-help').hidden = !missingTarget;
   byId('create').disabled = pending || checkingGit || !template || template.disabled || !name.trim() || !location ||
     !environmentReady || missingTarget || missingIcon;
-  byId('refresh').disabled = pending || loading;
+  byId('refresh').disabled = pending || !catalog;
   byId('settings').disabled = pending || !catalog;
   for (const control of [nameInput, locationInput, openMode, byId('browse'), byId('choose-zip'), byId('install')]) {
     control.disabled = pending;
@@ -393,7 +394,7 @@ function templateButton(template) {
   return button;
 }
 
-function updateCatalog() {
+function updateCatalog({ preserveSelection = false } = {}) {
   const showVr = catalog?.settings.enableVrTemplates === true;
   categories.querySelector('[data-group="vr"]').hidden = !showVr;
   if (!showVr && group === 'vr') group = 'all';
@@ -410,9 +411,10 @@ function updateCatalog() {
   if (catalog) {
     byId('source-path').textContent = catalog.zipError || catalog.zipDirectory || 'Choose the folder that contains your ZIP templates.';
     byId('source-path').title = catalog.zipDirectory;
-    byId('mono-status').textContent = catalog.sdkError || catalog.monoError || 'No MonoGame project templates were detected.';
+    byId('mono-status').textContent = catalog.sdkError || catalog.monoError || (loading ?
+      'Checking for MonoGame templates…' : 'No MonoGame project templates were detected.');
     byId('install').hidden = !catalog.sdkVersion;
-    byId('mono-sdk-guide').hidden = Boolean(catalog.sdkVersion);
+    byId('mono-sdk-guide').hidden = Boolean(catalog.sdkVersion) || (loading && !catalog.sdkError);
   }
 
   const categoryTemplates = (catalog?.templates || []).filter(template => group === 'all' || template.group === group);
@@ -425,15 +427,17 @@ function updateCatalog() {
     (!languageSelect.value || template.language === languageSelect.value) && (!readyOnly.checked || template.ready) &&
     searchText(`${template.label} ${template.language || ''} ${template.description}`).includes(query))
     .sort((first, second) => Number(Boolean(second.ready)) - Number(Boolean(first.ready)));
-  if (!visibleTemplates.some(template => template.id === selected)) {
-    selected = visibleTemplates[0]?.id;
+  if (!visibleTemplates.some(template => template.id === selected) && !(preserveSelection && loading && selected)) {
+    const first = visibleTemplates[0]?.id;
+    selected = loading && first === 'empty' ? undefined : first;
   }
   const focused = list.contains(document.activeElement) && document.activeElement.dataset.id;
   list.replaceChildren(...visibleTemplates.map(templateButton));
   if (focused) [...list.children].find(button => button.dataset.id === focused)?.focus();
 
   const status = byId('catalog-status');
-  if (loading) status.textContent = 'Detecting templates…';
+  if (loading) status.textContent = visibleTemplates.length && catalog?.detected.length ?
+    'Refreshing templates in the background…' : 'Detecting templates…';
   else if (visibleTemplates.length) status.textContent = '';
   else if (query || languageSelect.value) status.textContent = 'No templates match your filters.';
   else if (group === 'zip' && catalog?.zipDirectory && !catalog.zipError) status.textContent = 'No ZIP files in this folder.';
@@ -460,6 +464,7 @@ function startOperation(type, message, fields) {
 }
 
 function refresh(type = 'refresh') {
+  if (type === 'refresh') checkGitLocation();
   loading = true;
   updateCatalog();
   vscode.postMessage({ type, location: locationInput.value.trim() });
@@ -585,13 +590,15 @@ window.addEventListener('message', ({ data }) => {
   switch (data.type) {
     case 'catalog': {
       const firstCatalog = !catalog;
+      const gitChanged = catalog?.gitFile !== data.gitFile;
       catalog = data;
-      loading = false;
+      loading = data.refreshing;
       byId('workspace-mode').hidden = !data.hasWorkspace;
       if (firstCatalog && data.openMode) openMode.value = data.openMode;
       if (!editedLocation && !locationInput.value) locationInput.value = data.parent;
-      checkGitLocation();
-      byId('toolchain-status').textContent = data.detected.length ? `Detected toolchains (${data.detected.length})` : 'No toolchains detected';
+      if (firstCatalog || gitChanged || gitLocation !== locationInput.value.trim()) checkGitLocation();
+      byId('toolchain-status').textContent = data.detected.length ? `Detected toolchains (${data.detected.length})` :
+        loading ? 'Checking toolchains…' : 'No toolchains detected';
       byId('toolchain-list').replaceChildren(...data.detected.map(tool => {
         const item = document.createElement('li');
         item.textContent = `${tool.label} ${tool.version}${tool.usable === false ? ' (update needed)' : ''}`;
@@ -601,7 +608,7 @@ window.addEventListener('message', ({ data }) => {
       const frameworks = byId('frameworks');
       frameworks.textContent = data.frameworks.length ? `In workspace: ${data.frameworks.join(', ')}` : '';
       frameworks.hidden = !data.frameworks.length;
-      updateCatalog();
+      updateCatalog({ preserveSelection: true });
       break;
     }
     case 'location':

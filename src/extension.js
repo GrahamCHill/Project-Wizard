@@ -1,4 +1,4 @@
-const { randomBytes } = require('node:crypto');
+const { createHash, randomBytes } = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 const vscode = require('vscode');
@@ -15,12 +15,14 @@ const { createNpmProject } = require('./npm-generators');
 const { createExternalProject } = require('./external-generators');
 const { extractZipTemplate, listZipTemplates } = require('./zip-templates');
 const { readCatalogSettings, enabledTemplates } = require('./catalog');
+const { catalogCache } = require('./catalog-cache');
 const { gitProjectStatus, initializeProjectGit } = require('./git-project');
 const { projectHistory } = require('./recent-projects');
 const { executableIconFormats, loadExecutableIcons } = require('./native-app');
 
 const configurationKey = 'projectWizard.zipTemplatesDirectory';
 const catalogKey = 'projectWizard.catalog';
+const minute = 60_000;
 const projectFiles = '**/{*.csproj,*.fsproj,*.vbproj,Directory.Packages.props,CMakeLists.txt,package.json,project.godot,*.uproject,ProjectVersion.txt,tauri.conf.json,blender_manifest.toml,composer.json,pubspec.yaml}';
 const generatedFiles = '**/{.git,node_modules,bin,obj,build,.next,.nuxt,.output,out,target,.godot,Library,Binaries,Intermediate,vendor,.dart_tool,.venv,.project-wizard-*}/**';
 
@@ -264,6 +266,14 @@ function activate(context) {
   const output = vscode.window.createOutputChannel('Project Wizard');
   const log = line => output.appendLine(line);
   const history = projectHistory(vscode, context.globalState, log);
+  const scope = createHash('sha256').update(JSON.stringify([
+    context.extension.packageJSON.version, os.hostname(), process.platform, process.arch, vscode.env.remoteName,
+    process.env.PATH, process.env.DOTNET_ROOT
+  ])).digest('hex');
+  const toolsCache = catalogCache(context.globalState, 'toolchains', { scope, log, ttl: 10 * minute, limit: 1 });
+  const dotnetCache = catalogCache(context.globalState, '.NET templates', { scope, log, ttl: 5 * minute, limit: 16 });
+  const zipCache = catalogCache(context.globalState, 'ZIP templates', { scope, log, ttl: minute, limit: 8 });
+  const frameworksCache = catalogCache(context.workspaceState, 'workspace frameworks', { scope, log, ttl: minute, limit: 4 });
   let active;
 
   const send = (session, message) => {
@@ -319,33 +329,47 @@ function activate(context) {
     await openProject(uri, { forceReuseWindow: true, forceLocalWindow: local }, project);
   }
 
-  async function refresh(session, requestedLocation, rescanTools = false) {
+  async function discoverDotnet(location, cached) {
+    const parent = await existingDirectory(location).catch(() => os.homedir());
+    const sdk = await getSdk(parent, log).catch(error => ({ error: error.message }));
+    if (!sdk.version) return { sdk, mono: [] };
+    try {
+      return { sdk, mono: await listMonoGame(sdk, parent, log) };
+    } catch (error) {
+      const sameSdk = cached?.sdk.version === sdk.version && cached.sdk.executable === sdk.executable;
+      return { sdk, mono: sameSdk ? cached.mono : [], monoError: error.message };
+    }
+  }
+
+  async function refresh(session, requestedLocation, { force = false, background = false } = {}) {
+    if (active !== session || (background && (!session.initialized || session.busy))) return;
+    if (typeof requestedLocation === 'string' && requestedLocation) session.parent = requestedLocation;
+    const location = session.parent;
+    const directory = zipDirectory();
+    const folders = vscode.workspace.workspaceFolders || [];
+    const workspace = JSON.stringify(folders.map(folder => folder.uri.toString()).sort());
+    const scans = [
+      toolsCache.refresh('host', () => detectToolchains(), force),
+      dotnetCache.refresh(location, cached => discoverDotnet(location, cached), force),
+      directory && zipCache.refresh(directory, () => listZipTemplates(directory), force),
+      folders.length && frameworksCache.refresh(workspace, workspaceFrameworks, force)
+    ].filter(Boolean);
+    if (background && !scans.length) return;
+
     const scan = ++session.scan;
-    const preferred = requestedLocation || session.parent;
-    const parent = await existingDirectory(preferred).catch(() => os.homedir());
-    if (requestedLocation && scan === session.scan) session.parent = preferred;
-    if (rescanTools || !session.toolchainScan) {
-      session.toolchainScan = detectToolchains().catch(error => {
-        log(error.message);
-        return { results: {} };
-      });
+    await publishCatalog(session, { location, directory, workspace }, Boolean(scans.length));
+    if (!scans.length) return;
+    await Promise.all(scans);
+    if (session.scan === scan && active === session && session.parent === location) {
+      await publishCatalog(session, { location, directory, workspace }, false);
     }
-    const [sdk, zip, frameworks, { results, manager, pythonVersions = [] }] = await Promise.all([
-      getSdk(parent, log).catch(error => ({ error: error.message })),
-      listZipTemplates(zipDirectory()),
-      workspaceFrameworks().catch(error => { log(error.message); return []; }),
-      session.toolchainScan
-    ]);
-    let mono = [];
-    let monoError;
-    if (sdk.version) {
-      try {
-        mono = await listMonoGame(sdk, parent, log);
-      } catch (error) {
-        monoError = error.message;
-      }
-    }
-    if (session.scan !== scan || active !== session) return;
+  }
+
+  function publishCatalog(session, { location, directory, workspace }, refreshing) {
+    const { results = {}, manager, pythonVersions = [] } = toolsCache.read('host') || {};
+    const { sdk = {}, mono = [], monoError } = dotnetCache.read(location) || {};
+    const zip = zipCache.read(directory) || { directory, templates: [] };
+    const frameworks = frameworksCache.read(workspace) || [];
 
     const detected = { ...results, dotnet: sdk.version ? { version: sdk.version, file: sdk.executable } : undefined };
     const settings = catalogSettings();
@@ -361,8 +385,8 @@ function activate(context) {
     session.manager = manager;
     session.tools = detected;
     session.pythonVersions = pythonVersions;
-    await send(session, {
-      type: 'catalog', parent: session.parent, separator: path.sep, openMode: session.openMode,
+    return send(session, {
+      type: 'catalog', parent: location, separator: path.sep, openMode: session.openMode, refreshing,
       hasWorkspace: Boolean(vscode.workspace.workspaceFolders?.length),
       settings, availableTemplates: availableTemplates.map(({ id, label, language, group }) => ({ id, label, language, group })),
       templates: templates.map(template => ({
@@ -380,7 +404,8 @@ function activate(context) {
         .map(([id, result]) => ({ label: toolchains[id].label, ...result }))
         .sort((a, b) => a.label.localeCompare(b.label)),
       sdkVersion: sdk.version, sdkError: sdk.error, monoError, monoCount: mono.length,
-      zipDirectory: zip.directory, zipError: zip.error, zipCount: zip.templates.length, frameworks
+      zipDirectory: zip.directory, zipError: zip.error, zipCount: zip.templates.length, frameworks,
+      gitFile: detected.git?.file
     });
   }
 
@@ -389,7 +414,8 @@ function activate(context) {
     const settings = catalogSettings();
     if (!template || !enabledTemplates([template], settings).length) throw new Error('Select a template from the list.');
     const options = readProjectOptions(template, message.options, session.executableIcons);
-    const python = options?.type === 'python' && selectPython(options, session.tools, session.pythonVersions, template);
+    const tools = session.tools;
+    const python = options?.type === 'python' && selectPython(options, tools, session.pythonVersions, template);
     if (options?.type === 'python' && !python) {
       throw new Error('Python projects require a virtual environment. Install the selected version or choose a different environment manager.');
     }
@@ -400,13 +426,13 @@ function activate(context) {
       location: vscode.ProgressLocation.Notification, title: 'Creating project…'
     }, () => createProject(message.location, message.name, async (project, parent) => {
       if (template.kind === 'dotnet') await createDotnetProject(template, message.name, project, parent, log);
-      if (template.kind === 'starter') await writeStarter(template, message.name, project, parent, log, session.tools);
-      if (template.kind === 'react-native') await createReactNativeProject(message.name, project, session.tools, log);
-      if (template.kind === 'npm-generator') await createNpmProject(template, message.name, project, session.tools, log);
-      if (template.kind === 'external-generator') await createExternalProject(template, message.name, project, session.tools, log);
+      if (template.kind === 'starter') await writeStarter(template, message.name, project, parent, log, tools);
+      if (template.kind === 'react-native') await createReactNativeProject(message.name, project, tools, log);
+      if (template.kind === 'npm-generator') await createNpmProject(template, message.name, project, tools, log);
+      if (template.kind === 'external-generator') await createExternalProject(template, message.name, project, tools, log);
       if (template.kind === 'zip') await extractZipTemplate(template.archive, project, message.name);
       await applyProjectOptions(project, template, message.name, options, parent, log);
-      await initializeProjectGit(project, parent, session.tools?.git?.file, message.initializeGit, log);
+      await initializeProjectGit(project, parent, tools?.git?.file, message.initializeGit, log);
     }, log));
 
     if (python) {
@@ -448,8 +474,9 @@ function activate(context) {
     }
     if (session.busy) return;
     if (message.type === 'ready' || message.type === 'locationChanged' || message.type === 'refresh') {
+      session.initialized = true;
       if (message.type !== 'locationChanged') void showRecentProjects(session).catch(error => log(error.message));
-      return refresh(session, message.location, message.type === 'refresh');
+      return refresh(session, message.location, { force: message.type === 'refresh' });
     }
     if (message.type === 'openRecentProject') {
       session.busy = true;
@@ -532,6 +559,7 @@ function activate(context) {
         await vscode.window.withProgress({
           location: vscode.ProgressLocation.Notification, title: 'Installing MonoGame templates…'
         }, () => installMonoGame(parent, log));
+        dotnetCache.invalidate();
         await refresh(session, parent);
         await send(session, { type: 'success', message: 'MonoGame templates installed.' });
       }
@@ -547,15 +575,25 @@ function activate(context) {
     else void vscode.window.showErrorMessage(message);
   }
 
+  function refreshVisibleCatalog() {
+    const session = active;
+    if (session?.panel.visible) void refresh(session, undefined, { background: true }).catch(error => log(error.message));
+  }
+
   function openWizard(uri, openMode) {
     const requestedParent = folderPath(uri);
     if (active) {
       active.panel.reveal();
       if (requestedParent && !active.busy) {
-        active.parent = requestedParent;
-        active.openMode = openMode;
-        void send(active, { type: 'location', location: requestedParent, openMode });
-        void refresh(active, requestedParent).catch(error => reportError(active, error));
+        const session = active;
+        session.parent = requestedParent;
+        session.openMode = openMode;
+        if (session.initialized) {
+          void send(session, { type: 'location', location: requestedParent, openMode });
+          void refresh(session, requestedParent).catch(error => reportError(session, error));
+        }
+      } else {
+        refreshVisibleCatalog();
       }
       return;
     }
@@ -570,13 +608,16 @@ function activate(context) {
     const messages = panel.webview.onDidReceiveMessage(message => {
       void handleMessage(session, message).catch(error => reportError(session, error));
     });
+    const visibility = panel.onDidChangeViewState(refreshVisibleCatalog);
     panel.onDidDispose(() => {
       messages.dispose();
+      visibility.dispose();
       if (active === session) active = undefined;
     });
     panel.webview.html = wizardHtml(panel.webview, context.extensionUri);
   }
 
+  const refreshTimer = setInterval(refreshVisibleCatalog, minute);
   context.subscriptions.push(
     output,
     vscode.commands.registerCommand('projectWizard.newProject', uri =>
@@ -601,18 +642,23 @@ function activate(context) {
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
       const session = active;
-      if (session && (event.affectsConfiguration(configurationKey) || event.affectsConfiguration(catalogKey))) {
+      if (session?.initialized && (event.affectsConfiguration(configurationKey) || event.affectsConfiguration(catalogKey))) {
         void refresh(session).catch(error => reportError(session, error));
       }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
       await history.rememberCurrent();
-      if (active) void showRecentProjects(active).catch(error => log(error.message));
+      const session = active;
+      if (session) void showRecentProjects(session).catch(error => log(error.message));
+      if (session?.initialized) void refresh(session).catch(error => log(error.message));
     }),
     vscode.window.onDidChangeWindowState(({ focused }) => {
-      if (focused && active) void showRecentProjects(active).catch(error => log(error.message));
+      if (focused && active) {
+        void showRecentProjects(active).catch(error => log(error.message));
+        refreshVisibleCatalog();
+      }
     }),
-    { dispose: () => active?.panel.dispose() }
+    { dispose: () => { clearInterval(refreshTimer); active?.panel.dispose(); } }
   );
 
   void (async () => {

@@ -12,7 +12,7 @@ npm test
 npm run package
 ```
 
-The build writes `project-wizard-0.7.0.vsix` in this folder. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
+The build writes `project-wizard-<version>.vsix` in this folder, using the version in `package.json`. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
 
 For development, open this folder in VS Code and press `F5` to start the **Run Project Wizard** Extension Development Host. Open the wizard in that window to test the source directly.
 
@@ -27,6 +27,8 @@ To scaffold inside your current workspace, use **Project Wizard: New Project in 
 **Initialize Git repository** is on by default when Git is installed. It starts off inside an existing repository, including a linked worktree, and you can override the choice before creating the project. The wizard initializes the repository without making a commit.
 
 **Ready to use** is checked by default. Clear it to see starters that need setup. Select one to see its tool requirements and installation guides. Expand **Detected toolchains** to see installed versions and executable locations. Use **Refresh templates** after setup, and restart VS Code if your installer changed PATH. The catalog shows platform-specific starters on their supported systems.
+
+The wizard saves discovery results across VS Code restarts and shows the cached catalog as soon as it opens. On first use, the built-in catalog appears while discovery runs. While the wizard is visible, stale results refresh in the background. The .NET SDK and MonoGame templates are cached per destination folder so they respect its SDK selection. **Refresh templates** requests an immediate scan after you change your tools or templates.
 
 ## Wizard settings and recent projects
 

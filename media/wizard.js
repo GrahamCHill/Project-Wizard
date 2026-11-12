@@ -10,6 +10,8 @@ const locationInput = byId('location');
 const openMode = byId('open-mode');
 const initializeGit = byId('initialize-git');
 const projectSetup = byId('project-options');
+const buildChoiceSelect = byId('build-choice');
+const targetChoices = byId('target-choices');
 const environmentSelect = byId('python-environment');
 const pythonVersion = byId('python-version');
 const testFramework = byId('test-framework');
@@ -19,6 +21,7 @@ const settingsDialog = byId('catalog-settings');
 const settingsSearch = byId('settings-search');
 const settingsLanguages = byId('settings-languages');
 const settingsTemplates = byId('settings-templates');
+const recentList = byId('recent-project-list');
 const groupTitles = {
   all: 'Templates', cli: 'Command Line', desktop: 'Desktop', mobile: 'Mobile', graphics: 'Graphics', frontend: 'Web Frontend', server: 'Web Server',
   monogame: 'MonoGame', raylib: 'Raylib', zip: 'Custom ZIPs', vr: 'VR'
@@ -31,7 +34,7 @@ let visibleTemplates = [];
 let pending = false;
 let loading = true;
 let editedLocation = false;
-let renderedSelection;
+let renderedMissing;
 let optionTemplate;
 let catalogDraft;
 let gitLocation;
@@ -44,7 +47,7 @@ function searchText(value) {
   return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 }
 
-function settingsCheckbox(value, text, checked) {
+function checkboxLabel(value, text, checked) {
   const label = document.createElement('label');
   label.className = 'option-check';
   const input = document.createElement('input');
@@ -72,14 +75,15 @@ function openSettings() {
     disabledTemplates: new Set(settings.disabledTemplates)
   };
   byId('settings-error').hidden = true;
+  byId('open-on-startup').checked = settings.openOnStartup;
   byId('enable-vr').checked = settings.enableVrTemplates;
   settingsSearch.value = '';
   const languages = [...new Set(availableTemplates.map(template => template.language).filter(Boolean))].sort();
   settingsLanguages.replaceChildren(...languages.map(language =>
-    settingsCheckbox(language, language, !catalogDraft.disabledLanguages.has(language))));
+    checkboxLabel(language, language, !catalogDraft.disabledLanguages.has(language))));
   const templates = [...availableTemplates].sort((a, b) => a.label.localeCompare(b.label));
   settingsTemplates.replaceChildren(...templates.map(template => {
-    const label = settingsCheckbox(template.id, template.label, !catalogDraft.disabledTemplates.has(template.id));
+    const label = checkboxLabel(template.id, template.label, !catalogDraft.disabledTemplates.has(template.id));
     label.dataset.search = searchText(`${template.label} ${template.language || ''} ${groupTitles[template.group] || ''}`);
     return label;
   }));
@@ -89,6 +93,31 @@ function openSettings() {
 
 function setSettingsSaving(saving) {
   for (const control of settingsDialog.querySelectorAll('button, input')) control.disabled = saving;
+}
+
+function renderRecentProjects(projects) {
+  const focused = recentList.contains(document.activeElement) && document.activeElement.dataset.projectId;
+  recentList.replaceChildren(...projects.map(project => {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.projectId = project.id;
+    button.title = project.location;
+    const name = document.createElement('span');
+    name.className = 'recent-project-name';
+    name.textContent = project.name;
+    const location = document.createElement('span');
+    location.className = 'recent-project-location';
+    location.textContent = project.location;
+    button.append(name, location);
+    item.append(button);
+    return item;
+  }));
+  const empty = byId('recent-empty');
+  empty.textContent = 'Folders and workspaces you open in VS Code will appear here.';
+  empty.hidden = projects.length > 0;
+  updateForm();
+  if (focused) [...recentList.querySelectorAll('button')].find(button => button.dataset.projectId === focused)?.focus();
 }
 
 function setupButton(label, action, toolId) {
@@ -101,10 +130,11 @@ function setupButton(label, action, toolId) {
   return button;
 }
 
-function renderSetup(template) {
-  if (renderedSelection === template) return;
-  renderedSelection = template;
-  const missing = template?.missing || [];
+function renderSetup(requirements) {
+  const missing = requirements || [];
+  const state = JSON.stringify(missing);
+  if (renderedMissing === state) return;
+  renderedMissing = state;
   const setup = byId('setup-tools');
   setup.replaceChildren();
   setup.hidden = missing.length === 0;
@@ -160,6 +190,21 @@ function updateTestFrameworkField() {
   byId('test-framework-field').hidden = !byId('testing').checked || (optionTemplate?.options?.frameworks?.length || 0) < 2;
 }
 
+function selectedBuild() {
+  return optionTemplate?.options?.buildChoice?.options.find(option => option.id === buildChoiceSelect.value);
+}
+
+function selectedTargets() {
+  const choices = optionTemplate?.options?.targetChoice;
+  const selected = new Set([...targetChoices.querySelectorAll('input:checked')].map(input => input.value));
+  return choices?.options.filter(option => selected.has(option.id)) || [];
+}
+
+function updateDependencyField() {
+  const options = optionTemplate?.options;
+  byId('dependency-options').hidden = !options?.dependencies || (options.type === 'java' && buildChoiceSelect.value === 'jdk');
+}
+
 function renderProjectOptions(template) {
   if (optionTemplate === template) return;
   const preserve = optionTemplate?.id === template?.id;
@@ -172,6 +217,23 @@ function renderProjectOptions(template) {
     byId('dependencies').value = '';
     byId('testing').checked = false;
     pythonVersion.value = '';
+  }
+  const build = options.buildChoice;
+  byId('build-choice-field').hidden = !build;
+  if (build) {
+    const previous = preserve ? buildChoiceSelect.value : '';
+    byId('build-choice-label').textContent = build.label;
+    buildChoiceSelect.replaceChildren(...build.options.map(option =>
+      new Option(option.label + (option.ready ? '' : ' (setup needed)'), option.id)));
+    buildChoiceSelect.value = build.options.some(option => option.id === previous) ? previous : build.defaultId;
+  }
+  const targets = options.targetChoice;
+  byId('target-choice-field').hidden = !targets;
+  if (targets) {
+    byId('target-choice-label').textContent = targets.label;
+    const previous = preserve ? [...targetChoices.querySelectorAll('input:checked')].map(input => input.value) : [targets.defaultId];
+    targetChoices.replaceChildren(...targets.options.map(option =>
+      checkboxLabel(option.id, option.label + (option.ready ? '' : ' (setup needed)'), previous.includes(option.id))));
   }
   byId('python-options').hidden = options.type !== 'python';
   if (options.type === 'python') {
@@ -196,7 +258,7 @@ function renderProjectOptions(template) {
     choices.append(label);
   }
   choices.hidden = !options.libraries?.length;
-  byId('dependency-options').hidden = !options.dependencies;
+  updateDependencyField();
   byId('dependencies-label').textContent = options.dependencies || '';
   byId('dependencies').placeholder = options.example || '';
   byId('testing-option').hidden = !options.test;
@@ -211,11 +273,13 @@ function renderProjectOptions(template) {
 function selectedOptions() {
   if (!optionTemplate?.options) return;
   return {
+    build: selectedBuild()?.id,
+    targets: optionTemplate.options.targetChoice ? selectedTargets().map(option => option.id) : undefined,
     environment: environmentSelect.value,
     pythonVersion: pythonVersion.value,
     testing: byId('testing').checked,
     framework: testFramework.value,
-    dependencies: byId('dependencies').value,
+    dependencies: byId('dependency-options').hidden ? '' : byId('dependencies').value,
     libraries: [...byId('library-choices').querySelectorAll('input:checked')].map(input => input.value)
   };
 }
@@ -245,10 +309,16 @@ function updateForm() {
 
   byId('selection').hidden = !template;
   byId('selected-name').textContent = template?.label || '';
-  byId('selected-requirement').textContent = template?.requirement || '';
-  byId('selected-requirement').hidden = !template?.requirement;
-  renderSetup(template);
   renderProjectOptions(template);
+  const build = selectedBuild();
+  const targets = selectedTargets();
+  const hasTargets = Boolean(template?.options?.targetChoice);
+  const requirement = hasTargets ? targets.map(option => option.requirement).filter(Boolean).join(' ') : build?.requirement || template?.requirement;
+  byId('selected-requirement').textContent = requirement || '';
+  byId('selected-requirement').hidden = !requirement;
+  const missing = hasTargets ? [...new Map(targets.flatMap(option => option.missing).map(tool => [tool.id, tool])).values()] :
+    build?.missing || template?.missing;
+  renderSetup(missing);
   for (const button of list.querySelectorAll('button')) {
     button.setAttribute('aria-pressed', String(button.dataset.id === selected));
   }
@@ -264,13 +334,16 @@ function updateForm() {
   gitMessage.hidden = !gitMessage.textContent;
   byId('git-setup-guide').hidden = !gitStatus?.validLocation || gitStatus.available;
   byId('git-setup-guide').disabled = pending;
-  byId('create').disabled = pending || checkingGit || !template || template.disabled || !name.trim() || !location || !environmentReady;
+  const missingTarget = hasTargets && targets.length === 0;
+  byId('target-choice-help').hidden = !missingTarget;
+  byId('create').disabled = pending || checkingGit || !template || template.disabled || !name.trim() || !location || !environmentReady || missingTarget;
   byId('refresh').disabled = pending || loading;
   byId('settings').disabled = pending || !catalog;
   for (const control of [nameInput, locationInput, openMode, byId('browse'), byId('choose-zip'), byId('install')]) {
     control.disabled = pending;
   }
   for (const button of document.querySelectorAll('[data-setup]')) button.disabled = pending;
+  for (const button of recentList.querySelectorAll('button')) button.disabled = pending;
   byId('option-fields').disabled = pending;
 }
 
@@ -386,6 +459,11 @@ list.addEventListener('click', event => {
 search.addEventListener('input', updateCatalog);
 languageSelect.addEventListener('change', updateCatalog);
 readyOnly.addEventListener('change', updateCatalog);
+buildChoiceSelect.addEventListener('change', () => {
+  updateDependencyField();
+  updateForm();
+});
+targetChoices.addEventListener('change', updateForm);
 environmentSelect.addEventListener('change', () => {
   updateVersionSuggestions();
   updateForm();
@@ -428,7 +506,8 @@ byId('settings-form').addEventListener('submit', event => {
   const settings = {
     disabledLanguages: [...catalogDraft.disabledLanguages].sort(),
     disabledTemplates: [...catalogDraft.disabledTemplates].sort(),
-    enableVrTemplates: byId('enable-vr').checked
+    enableVrTemplates: byId('enable-vr').checked,
+    openOnStartup: byId('open-on-startup').checked
   };
   setSettingsSaving(true);
   byId('settings-error').hidden = true;
@@ -450,6 +529,14 @@ byId('project-form').addEventListener('submit', event => {
     templateId: selected, name: nameInput.value, openMode: openMode.value, options: selectedOptions(),
     initializeGit: gitStatus?.error ? false : gitOverride
   });
+});
+recentList.addEventListener('click', event => {
+  const button = event.target.closest('button[data-project-id]');
+  if (!button || pending) return;
+  byId('recent-error').hidden = true;
+  pending = true;
+  updateForm();
+  vscode.postMessage({ type: 'openRecentProject', projectId: button.dataset.projectId });
 });
 
 window.addEventListener('message', ({ data }) => {
@@ -486,6 +573,19 @@ window.addEventListener('message', ({ data }) => {
     case 'gitLocation':
       if (data.requestId !== gitRequest) break;
       gitStatus = data;
+      updateForm();
+      break;
+    case 'recentProjects':
+      renderRecentProjects(data.projects);
+      break;
+    case 'recentProjectError':
+      byId('recent-error').textContent = data.message;
+      byId('recent-error').hidden = false;
+      pending = false;
+      updateForm();
+      break;
+    case 'recentProjectOpened':
+      pending = false;
       updateForm();
       break;
     case 'setupFeedback':

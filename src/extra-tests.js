@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createDotnetProject } = require('./projects');
+const junitVersion = '6.0.3';
 
 async function testInstructions(project, note, command) {
   await fs.appendFile(path.join(project, 'README.md'), '\n## Tests\n\n' + note + '\n\n~~~sh\n' + command + '\n~~~\n');
@@ -51,7 +52,7 @@ async function addJvmTests(project, kotlin) {
     '    <dependency>',
     '      <groupId>org.junit.jupiter</groupId>',
     '      <artifactId>junit-jupiter</artifactId>',
-    '      <version>6.0.3</version>',
+    '      <version>' + junitVersion + '</version>',
     '      <scope>test</scope>',
     '    </dependency>',
     ...kotlinDependency,
@@ -122,4 +123,4 @@ async function addDotnetTests(project, parent, framework, log) {
   await testInstructions(project, (xunit ? 'xUnit' : 'NUnit') + ' runs as a separate test project.', 'dotnet test tests/' + name + '.csproj');
 }
 
-module.exports = { addDotnetTests, addJvmTests, addSwiftTests };
+module.exports = { addDotnetTests, addJvmTests, addSwiftTests, junitVersion, testInstructions };

@@ -3,7 +3,8 @@ function readCatalogSettings(value) {
   return {
     disabledLanguages: strings(value?.disabledLanguages),
     disabledTemplates: strings(value?.disabledTemplates),
-    enableVrTemplates: value?.enableVrTemplates === true
+    enableVrTemplates: value?.enableVrTemplates === true,
+    openOnStartup: value?.openOnStartup === true
   };
 }
 

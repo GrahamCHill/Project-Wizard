@@ -14,6 +14,7 @@ const { createReactNativeProject } = require('./react-native');
 const { extractZipTemplate, listZipTemplates } = require('./zip-templates');
 const { readCatalogSettings, enabledTemplates } = require('./catalog');
 const { gitProjectStatus, initializeProjectGit } = require('./git-project');
+const { projectHistory } = require('./recent-projects');
 
 const configurationKey = 'projectWizard.zipTemplatesDirectory';
 const catalogKey = 'projectWizard.catalog';
@@ -161,6 +162,15 @@ function wizardHtml(webview, extensionUri) {
           <details id="project-options" hidden>
             <summary>Project setup</summary>
             <fieldset id="option-fields">
+              <div id="build-choice-field" hidden>
+                <label id="build-choice-label" for="build-choice"></label>
+                <select id="build-choice"></select>
+              </div>
+              <fieldset id="target-choice-field" hidden>
+                <legend id="target-choice-label"></legend>
+                <div id="target-choices"></div>
+                <p id="target-choice-help" class="option-hint" hidden>Choose at least one target platform.</p>
+              </fieldset>
               <div id="python-options" hidden>
                 <label for="python-environment">Python environment</label>
                 <select id="python-environment"></select>
@@ -194,11 +204,17 @@ function wizardHtml(webview, extensionUri) {
         </form>
       </section>
     </div>
+    <section class="recent-projects" aria-labelledby="recent-heading">
+      <h2 id="recent-heading">Recent projects</h2>
+      <ul id="recent-project-list"></ul>
+      <p id="recent-empty" role="status">Loading recent projects…</p>
+      <p id="recent-error" class="error" role="alert" hidden></p>
+    </section>
   </main>
   <dialog id="catalog-settings" aria-labelledby="settings-heading">
     <form id="settings-form">
-      <h2 id="settings-heading">Template settings</h2>
-      <p>Choose which languages and templates appear in Project Wizard.</p>
+      <h2 id="settings-heading">Project Wizard settings</h2>
+      <label class="option-check"><input id="open-on-startup" type="checkbox"> Open Project Wizard when VS Code starts</label>
       <label class="option-check"><input id="enable-vr" type="checkbox"> Enable VR templates</label>
       <div class="settings-lists">
         <fieldset>
@@ -228,11 +244,61 @@ function wizardHtml(webview, extensionUri) {
 function activate(context) {
   const output = vscode.window.createOutputChannel('Project Wizard');
   const log = line => output.appendLine(line);
+  const history = projectHistory(vscode, context.globalState, log);
   let active;
 
   const send = (session, message) => {
     if (session && active === session) return session.panel.webview.postMessage(message);
   };
+
+  function catalogSettings() {
+    return readCatalogSettings(vscode.workspace.getConfiguration().get(catalogKey));
+  }
+
+  async function showRecentProjects(session) {
+    const scan = ++session.recentScan;
+    const projects = await history.list();
+    if (active !== session || scan !== session.recentScan) return;
+    session.recentProjects = new Map(projects.map(project => [project.id, project]));
+    await send(session, { type: 'recentProjects', projects });
+  }
+
+  async function openProject(uri, options, recent) {
+    const target = uri.toString();
+    const marker = catalogSettings().openOnStartup ? await history.suppressStartup(target) : undefined;
+    try {
+      let opened;
+      if (recent?.remoteAuthority && uri.scheme === 'file') {
+        const openable = recent.kind === 'workspace' ? { workspaceUri: uri } : { folderUri: uri };
+        opened = await vscode.commands.executeCommand('_files.windowOpen', [openable], {
+          ...options, remoteAuthority: recent.remoteAuthority
+        });
+      } else {
+        opened = await vscode.commands.executeCommand('vscode.openFolder', uri, options);
+      }
+      if (opened === false && marker) await history.takeStartupSuppression(target, marker);
+    } catch (error) {
+      if (marker) await history.takeStartupSuppression(target, marker);
+      throw error;
+    }
+  }
+
+  async function openRecentProject(session, id) {
+    const project = session.recentProjects.get(id);
+    if (!project) throw new Error('Select a project from the recent list.');
+    if (history.current()?.id === id) {
+      session.panel.dispose();
+      return;
+    }
+    const uri = vscode.Uri.parse(project.uri);
+    const local = uri.scheme === 'file' && !project.remoteAuthority;
+    if (local && !vscode.env.remoteName) {
+      const entry = await vscode.workspace.fs.stat(uri).catch(() => undefined);
+      const expected = project.kind === 'workspace' ? vscode.FileType.File : vscode.FileType.Directory;
+      if (!(entry?.type & expected)) throw new Error(`${project.name} is unavailable at ${project.location}.`);
+    }
+    await openProject(uri, { forceReuseWindow: true, forceLocalWindow: local }, project);
+  }
 
   async function refresh(session, requestedLocation, rescanTools = false) {
     const scan = ++session.scan;
@@ -263,11 +329,15 @@ function activate(context) {
     if (session.scan !== scan || active !== session) return;
 
     const detected = { ...results, dotnet: sdk.version ? { version: sdk.version, file: sdk.executable } : undefined };
-    const settings = readCatalogSettings(vscode.workspace.getConfiguration().get(catalogKey));
+    const settings = catalogSettings();
     const availableTemplates = templatesForPlatform([...mono, ...starters, ...zip.templates], process.platform);
-    const templates = enabledTemplates(availableTemplates, settings).map(template => ({
-      ...template, ...templateAvailability(template, detected, process.platform, manager)
-    }));
+    const templates = enabledTemplates(availableTemplates, settings).map(template => {
+      const availability = templateAvailability(template, detected, process.platform, manager);
+      const options = projectOptions(template, detected, pythonVersions, process.platform, manager);
+      const builds = options?.buildChoice || options?.targetChoice;
+      const ready = builds ? builds.options.some(option => option.ready) : availability.ready;
+      return { ...template, ...availability, options, ready };
+    });
     session.templates = new Map(templates.map(template => [template.id, template]));
     session.manager = manager;
     session.tools = detected;
@@ -279,11 +349,11 @@ function activate(context) {
       templates: templates.map(template => ({
         id: template.id, group: template.group, label: template.label, language: template.language,
         description: template.description, requirement: template.requirement, ready: template.ready, missing: template.missing,
-        options: projectOptions(template, detected, pythonVersions),
+        options: template.options,
         disabled: Boolean((template.needsSdk && !sdk.version) || (template.kind === 'react-native' && !template.ready))
       })),
       detected: Object.entries(detected).filter(([id, result]) =>
-        !['vite-node', 'expo-node', 'react-native-node', 'android-gradle', 'android-xr-gradle'].includes(id) && result)
+        !['vite-node', 'expo-node', 'react-native-node', 'android-gradle', 'android-xr-gradle', 'java-17', 'kmp-gradle'].includes(id) && result)
         .map(([id, result]) => ({ label: toolchains[id].label, ...result }))
         .sort((a, b) => a.label.localeCompare(b.label)),
       sdkVersion: sdk.version, sdkError: sdk.error, monoError, monoCount: mono.length,
@@ -293,7 +363,7 @@ function activate(context) {
 
   async function create(session, message) {
     const template = session.templates.get(message.templateId);
-    const settings = readCatalogSettings(vscode.workspace.getConfiguration().get(catalogKey));
+    const settings = catalogSettings();
     if (!template || !enabledTemplates([template], settings).length) throw new Error('Select a template from the list.');
     const options = readProjectOptions(template, message.options);
     const python = options?.type === 'python' && selectPython(options, session.tools, session.pythonVersions, template);
@@ -328,7 +398,7 @@ function activate(context) {
     await send(session, { type: 'success', message: summary });
     if (message.openMode === 'new' || message.openMode === 'current') {
       try {
-        await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(destination), {
+        await openProject(vscode.Uri.file(destination), {
           forceNewWindow: message.openMode === 'new', forceReuseWindow: message.openMode === 'current'
         });
       } catch (error) {
@@ -353,7 +423,21 @@ function activate(context) {
     }
     if (session.busy) return;
     if (message.type === 'ready' || message.type === 'locationChanged' || message.type === 'refresh') {
+      if (message.type !== 'locationChanged') void showRecentProjects(session).catch(error => log(error.message));
       return refresh(session, message.location, message.type === 'refresh');
+    }
+    if (message.type === 'openRecentProject') {
+      session.busy = true;
+      try {
+        await openRecentProject(session, message.projectId);
+        await send(session, { type: 'recentProjectOpened' });
+      } catch (error) {
+        log(error.message);
+        await send(session, { type: 'recentProjectError', message: error.message });
+      } finally {
+        session.busy = false;
+      }
+      return;
     }
     if (message.type === 'saveCatalogSettings') {
       try {
@@ -430,7 +514,7 @@ function activate(context) {
       retainContextWhenHidden: true,
       localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')]
     });
-    const session = { panel, parent, openMode, scan: 0, busy: false, templates: new Map() };
+    const session = { panel, parent, openMode, scan: 0, recentScan: 0, busy: false, templates: new Map(), recentProjects: new Map() };
     active = session;
     const messages = panel.webview.onDidReceiveMessage(message => {
       void handleMessage(session, message).catch(error => reportError(session, error));
@@ -470,8 +554,22 @@ function activate(context) {
         void refresh(session).catch(error => reportError(session, error));
       }
     }),
+    vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+      await history.rememberCurrent();
+      if (active) void showRecentProjects(active).catch(error => log(error.message));
+    }),
+    vscode.window.onDidChangeWindowState(({ focused }) => {
+      if (focused && active) void showRecentProjects(active).catch(error => log(error.message));
+    }),
     { dispose: () => active?.panel.dispose() }
   );
+
+  void (async () => {
+    const current = history.current();
+    const skip = current && await history.takeStartupSuppression(current.uri);
+    await history.rememberCurrent();
+    if (!skip && !active && catalogSettings().openOnStartup) openWizard();
+  })().catch(error => reportError(active, error));
 }
 
 module.exports = { activate };

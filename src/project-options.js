@@ -1,9 +1,11 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { cmakeLibraries, parseCmakeLibraries, writeCmakeOptions } = require('./cmake-options');
+const { cmakeLibraries, configureEmscripten, parseCmakeLibraries, writeCmakeOptions } = require('./cmake-options');
 const { environments, parsePythonOptions, preparePython, selectPython } = require('./python-options');
 const { addDotnetTests, addJvmTests, addSwiftTests } = require('./extra-tests');
 const { replaceTokens } = require('./projects');
+const { configureJava, parseJavaDependencies } = require('./java-options');
+const { templateAvailability } = require('./toolchains');
 
 const npmTemplates = ['javascript-frontend', 'javascript-server', 'typescript-frontend', 'expo-mobile'];
 const npmOptions = { type: 'npm', dependencies: 'npm packages', example: '@scope/package@^1.0.0' };
@@ -27,7 +29,20 @@ const nativeTests = {
   }
 };
 
-function projectOptions(template, tools = {}, versions = []) {
+const javaBuilds = [
+  { id: 'jdk', label: 'JDK (javac and java)', tools: ['java'] },
+  { id: 'maven', label: 'Maven', tools: ['java-17', 'maven'], requirement: 'Maven 3.9+ and JDK 17 or newer.' },
+  { id: 'gradle', label: 'Gradle', tools: ['java-17', 'gradle'], requirement: 'Gradle 8.5+ and a compatible JDK 17 or newer.' }
+];
+
+function buildChoice(label, choices, tools, platform, manager) {
+  const options = choices.map(({ id, label, requirement, ...requirements }) => ({
+    id, label, requirement, ...templateAvailability(requirements, tools, platform, manager)
+  }));
+  return { label, options, defaultId: (options.find(option => option.ready) || options[0]).id };
+}
+
+function projectOptions(template, tools = {}, versions = [], platform = process.platform, manager) {
   if (template.kind === 'react-native') return npmOptions;
   if (template.kind === 'dotnet' || template.id === 'raylib-csharp') {
     return { type: 'dotnet-tests', ...testOptions('xunit', 'nunit') };
@@ -36,7 +51,17 @@ function projectOptions(template, tools = {}, versions = []) {
   if (template.cmakeTarget) {
     return { type: 'cmake', libraries: cmakeLibraries(template).map(({ id, label }) => ({ id, label })),
       dependencies: 'Additional CMake archives', example: 'name target https://example.com/library.tar.gz [sha256]',
+      targetChoice: template.webTarget ? buildChoice('Target platforms', [
+        { id: 'native', label: 'Desktop (native)', tools: template.tools, platformTools: template.platformTools,
+          requirement: template.requirement },
+        { id: 'emscripten', label: 'Web (Emscripten)', tools: ['cmake', 'emscripten'], platformTools: { win32: ['emscripten-generator'] },
+          requirement: 'CMake 3.24+ and an activated Emscripten SDK.' }
+      ], tools, platform, manager) : undefined,
       ...testOptions(...(template.language === 'C' ? ['ctest'] : ['gtest', 'catch2'])) };
+  }
+  if (template.language === 'Java') {
+    return { type: 'java', buildChoice: buildChoice('Build system', javaBuilds, tools, platform, manager),
+      dependencies: 'Java dependencies', example: 'org.apache.commons:commons-lang3:3.20.0', ...testOptions('junit') };
   }
   if (template.language === 'Python') {
     const managers = environments.map(environment => {
@@ -56,7 +81,7 @@ function projectOptions(template, tools = {}, versions = []) {
     return { ...npmOptions, ...testOptions(...(template.id === 'expo-mobile' ? ['node'] : ['node', 'vitest'])) };
   }
   if (['kotlin-multiplatform', 'kotlin-android-xr'].includes(template.id)) return;
-  if (['Java', 'Kotlin'].includes(template.language)) return { type: 'jvm-tests', ...testOptions('junit') };
+  if (template.language === 'Kotlin') return { type: 'jvm-tests', ...testOptions('junit') };
   if (template.language === 'Swift') return { type: 'swift-tests', ...testOptions('xctest') };
   if (nativeTests[template.language]) return { type: 'native', ...testOptions(template.language) };
 }
@@ -90,10 +115,32 @@ function readProjectOptions(template, input = {}) {
   if (config.type === 'python') {
     return { type: config.type, tkinter: template.id === 'python-desktop', ...parsePythonOptions(input, lines, framework) };
   }
-  const selected = Array.isArray(input.libraries) ? input.libraries : [];
-  const packages = config.type === 'cmake' ? parseCmakeLibraries(template, selected, lines) :
-    config.type === 'npm' ? parseNpmLibraries(lines) : undefined;
-  return { type: config.type, packages, framework };
+  const builds = config.buildChoice?.options;
+  const build = builds && (input.build || builds[0].id);
+  if (build && !builds.some(option => option.id === build)) throw new Error('Choose a supported build option.');
+  let targets;
+  if (config.targetChoice) {
+    const selected = input.targets ?? ['native'];
+    if (!Array.isArray(selected) || !selected.length ||
+        !selected.every(id => config.targetChoice.options.some(option => option.id === id))) {
+      throw new Error('Choose at least one supported target platform.');
+    }
+    targets = [...new Set(selected)];
+  }
+  let packages;
+  if (config.type === 'java') {
+    if (build === 'jdk' && lines.length) throw new Error('Choose Maven or Gradle to add Java dependencies.');
+    packages = parseJavaDependencies(lines);
+    const testDependencies = ['org.junit.jupiter:junit-jupiter', 'org.junit.platform:junit-platform-launcher'];
+    if (framework && packages.some(({ group, artifact }) => testDependencies.includes(`${group}:${artifact}`))) {
+      throw new Error('The selected JUnit example already adds the JUnit dependencies.');
+    }
+  } else if (config.type === 'cmake') {
+    packages = parseCmakeLibraries(template, Array.isArray(input.libraries) ? input.libraries : [], lines);
+  } else if (config.type === 'npm') {
+    packages = parseNpmLibraries(lines);
+  }
+  return { type: config.type, packages, framework, build, targets };
 }
 
 async function appendTest(project, file, source, command, label) {
@@ -150,12 +197,16 @@ async function configureNpm(project, template, name, options) {
 
 async function applyProjectOptions(project, template, name, options, parent, log) {
   if (!options) return;
-  if (options.type === 'cmake') return writeCmakeOptions(project, template, options.packages, options.framework);
+  if (options.type === 'cmake') {
+    if (options.targets?.includes('emscripten')) await configureEmscripten(project, template, name, options.targets);
+    return writeCmakeOptions(project, template, options.packages, options.framework, options.targets);
+  }
+  if (options.type === 'java') return configureJava(project, template, name, options);
   if (options.type === 'python') return preparePython(project, template, name, options);
   if (options.type === 'npm') return configureNpm(project, template, name, options);
   if (options.framework) {
     if (options.type === 'dotnet-tests') return addDotnetTests(project, parent, options.framework, log);
-    if (options.type === 'jvm-tests') return addJvmTests(project, template.language === 'Kotlin');
+    if (options.type === 'jvm-tests') return addJvmTests(project, true);
     if (options.type === 'swift-tests') return addSwiftTests(project);
     const test = nativeTests[template.language];
     await appendTest(project, test.file, test.source, test.command, test.label + '.');

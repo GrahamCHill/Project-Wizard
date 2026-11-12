@@ -62,12 +62,34 @@ const toolchains = {
     label: 'Java JDK', url: 'https://adoptium.net/temurin/releases/',
     instructions: 'Install a current JDK, including java and javac. Set JAVA_HOME or add the JDK bin folder to PATH.'
   },
+  'java-17': {
+    label: 'JDK 17 or newer', url: 'https://adoptium.net/temurin/releases/',
+    instructions: 'Install a compatible JDK and set JAVA_HOME so Maven or Gradle uses it.'
+  },
+  maven: {
+    label: 'Apache Maven', url: 'https://maven.apache.org/install.html',
+    instructions: 'Install the latest stable Maven release and add its bin folder to PATH or set MAVEN_HOME.',
+    macos: 'brew install maven'
+  },
+  emscripten: {
+    label: 'Emscripten SDK', url: 'https://emscripten.org/docs/getting_started/downloads.html',
+    instructions: 'Install and activate the latest Emscripten SDK. Load emsdk_env in your shell, then launch VS Code from that shell to detect the toolchain.'
+  },
+  'emscripten-generator': {
+    label: 'Ninja or MinGW Make', url: 'https://ninja-build.org/',
+    instructions: 'Install Ninja or MinGW Make and add it to PATH so emcmake can select a generator on Windows.',
+    windows: 'winget install --exact --id Ninja-build.Ninja'
+  },
   kotlin: {
     label: 'Kotlin/JVM compiler', url: 'https://kotlinlang.org/docs/command-line.html',
     instructions: 'Download the latest standalone compiler and add its bin folder to PATH.',
     macos: 'brew install kotlin'
   },
   gradle: {
+    label: 'Gradle', url: 'https://docs.gradle.org/current/userguide/installation.html',
+    instructions: 'Install the latest stable Gradle release and add its bin folder to PATH or set GRADLE_HOME.'
+  },
+  'kmp-gradle': {
     label: 'Gradle', url: 'https://gradle.org/releases/',
     instructions: 'Install a compatible Gradle 9.0–9.7 release and add its bin folder to PATH or set GRADLE_HOME. Run Gradle with a compatible JDK 17 or newer.'
   },
@@ -452,10 +474,14 @@ async function detectToolchains(settings = system) {
       [windows && programFiles && path.join(programFiles, 'LOVE'), mac && '/Applications/love.app/Contents/MacOS']),
     probe(['gradle'], ['--version'], /\bGradle (\d+\.\d+(?:\.\d+)?)/,
       [bin(env.GRADLE_HOME), path.join(home, '.sdkman', 'candidates', 'gradle', 'current', 'bin')]),
+    probe(['mvn'], ['--version'], /\bApache Maven (\d+\.\d+\.\d+)/,
+      [bin(env.MAVEN_HOME), bin(env.M2_HOME), path.join(home, '.sdkman', 'candidates', 'maven', 'current', 'bin')]),
+    probe(['emcc'], ['--version'], /\bemcc[^\r\n]*?\b(\d+\.\d+\.\d+)/,
+      [env.EMSDK && path.join(env.EMSDK, 'upstream', 'emscripten')]),
     findAndroidTools(settings)
   ]);
   const [uv, conda, virtualenv, rustc, cargo, go, swift, javac, kotlin, zig, node, npm, cmake, compiler, cpp, cuda, qt, manager,
-    [git, ruby, bundler, php, lua, love, gradle, android], vulkanSdk] = await Promise.all([
+    [git, ruby, bundler, php, lua, love, gradle, maven, emscripten, android], vulkanSdk] = await Promise.all([
     probe(['uv'], ['--version'], /\buv (\d+\.\d+\.\d+)/, [path.join(home, '.cargo', 'bin')]),
     probe(['conda'], ['--version'], /\bconda (\d+\.\d+(?:\.\d+)?)/, [
       env.CONDA_EXE && path.dirname(env.CONDA_EXE),
@@ -486,6 +512,8 @@ async function detectToolchains(settings = system) {
   const python = pythonVersions.find(runtime => runtime.usable) || pythonVersions[0];
   const tk = pythonVersions.find(runtime => runtime.usable && runtime.tkinter);
   const javaRuntime = javac && await detectExecutable(['java'], ['-version'], /version "(\d+(?:\.\d+)*)/, [path.dirname(javac.file), ...javaDirs], settings, file => mac && file === '/usr/bin/java');
+  const emcmake = emscripten && (await candidates(['emcmake'], directories(path.dirname(emscripten.file)), platform))[0];
+  const emscriptenGenerator = windows && await probe(['ninja', 'mingw32-make'], ['--version'], /^(?:GNU Make )?(\d+\.\d+(?:\.\d+)?)/);
   const systemCompiler = studio ? { version: 'MSVC', file: studio.file } : appleSdk ? { version: 'Apple Clang', file: appleSdk.file } : undefined;
   const virtualenvRuntime = pythonVersions.find(runtime => runtime.usable && runtime.virtualenv);
   const pkgConfig = (module) => probe(['pkg-config', 'pkgconf'], ['--modversion', module], /^(\d+(?:\.\d+)*)/);
@@ -502,8 +530,13 @@ async function detectToolchains(settings = system) {
     swift: requireVersion(swift, 5, 9),
     'apple-sdk': appleSdk,
     java: javac && javaRuntime ? javac : undefined,
+    'java-17': javac && javaRuntime ? requireVersion(javac, 17) : undefined,
+    maven: requireVersion(maven, 3, 9),
+    emscripten: emcmake ? requireVersion(emscripten, 3, 1) : undefined,
+    'emscripten-generator': emscriptenGenerator || undefined,
     kotlin,
-    gradle: gradle && { ...gradle, usable: atLeast(gradle.version, 9) && !atLeast(gradle.version, 9, 8) },
+    gradle: requireVersion(gradle, 8, 5),
+    'kmp-gradle': gradle && { ...gradle, usable: atLeast(gradle.version, 9) && !atLeast(gradle.version, 9, 8) },
     'android-gradle': requireVersion(gradle, 9, 3, 1),
     'android-xr-gradle': requireVersion(gradle, 9, 5),
     ...android,

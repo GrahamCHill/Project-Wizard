@@ -244,6 +244,67 @@ test('writes CMake dependency declarations and opt-in C or GoogleTest examples',
   }
 });
 
+test('configures the Emscripten target for both Raylib and basic CMake languages', async t => {
+  const root = await fixture(t);
+  for (const id of ['c-cmake', 'cpp-cmake', 'raylib-c', 'raylib-cpp']) {
+    const template = starters.find(item => item.id === id);
+    const config = projectOptions(template, { cmake: {}, emscripten: {}, 'emscripten-generator': {} }).targetChoice;
+    assert.deepEqual(config.options.map(option => option.id), ['native', 'emscripten']);
+    assert.equal(config.defaultId, 'emscripten');
+    assert.deepEqual(readProjectOptions(template).targets, ['native']);
+    assert.throws(() => readProjectOptions(template, { targets: [] }), /at least one supported target/);
+    const desktop = id === 'raylib-cpp';
+    const targets = desktop ? ['native', 'emscripten'] : ['emscripten'];
+    const options = readProjectOptions(template, { targets, testing: true });
+    assert.deepEqual(options.targets, targets);
+    const project = await createProject(root, id, async (target, parent) => {
+      await writeStarter(template, id, target, parent);
+      await applyProjectOptions(target, template, id, options);
+    });
+    const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
+    if (desktop) assert.doesNotMatch(cmake, /if\(NOT EMSCRIPTEN\)/);
+    else assert.match(cmake, /if\(NOT EMSCRIPTEN\)/);
+    assert.match(cmake, /if\(EMSCRIPTEN\)/);
+    assert.match(cmake, /OUTPUT_NAME index SUFFIX "\.html"/);
+    const readme = await fs.readFile(path.join(project, 'README.md'), 'utf8');
+    assert.match(readme, /emcmake cmake -S \. -B build-web/);
+    assert.match(readme, /emrun build-web\/index\.html/);
+    assert.match(readme, /ctest --test-dir build-web/);
+    assert.match(await fs.readFile(path.join(project, '.gitignore'), 'utf8'), /build-web\//);
+    if (desktop) assert.match(readme, /^ctest --test-dir build -C Debug/m);
+  }
+  assert.equal(projectOptions(starters.find(item => item.id === 'cuda-cmake')).targetChoice, undefined);
+});
+
+test('creates Maven and Gradle Java applications with selected dependencies and JUnit', async t => {
+  const root = await fixture(t);
+  const template = starters.find(item => item.id === 'java-server');
+  const config = projectOptions(template, { java: {}, 'java-17': {}, maven: {} }).buildChoice;
+  assert.equal(config.defaultId, 'jdk');
+  assert.deepEqual(config.options.map(option => [option.id, option.ready]), [['jdk', true], ['maven', true], ['gradle', false]]);
+  assert.throws(() => readProjectOptions(template, { build: 'maven', dependencies: '<dependency/>' }), /group:artifact:version/);
+  assert.throws(() => readProjectOptions(template, { build: 'jdk', dependencies: 'example:library:1.0.0' }), /Choose Maven or Gradle/);
+  assert.throws(() => readProjectOptions(template, { build: 'other' }), /supported build option/);
+  for (const [build, file, dependency, run] of [
+    ['maven', 'pom.xml', /<artifactId>commons-lang3<\/artifactId>/, /mvn compile exec:java/],
+    ['gradle', 'build.gradle', /implementation 'org\.apache\.commons:commons-lang3:3\.20\.0'/, /gradle run/]
+  ]) {
+    const name = 'Java ' + build;
+    const options = readProjectOptions(template, {
+      build, dependencies: 'org.apache.commons:commons-lang3:3.20.0', testing: true, framework: 'junit'
+    });
+    const project = await createProject(root, name, async (target, parent) => {
+      await writeStarter(template, name, target, parent);
+      await applyProjectOptions(target, template, name, options);
+    });
+    assert.match(await fs.readFile(path.join(project, file), 'utf8'), dependency);
+    assert.match(await fs.readFile(path.join(project, 'src/main/java/Main.java'), 'utf8'), /HttpServer/);
+    assert.match(await fs.readFile(path.join(project, 'src/test/java/GreetingTest.java'), 'utf8'), /Main\.greeting\(\)/);
+    assert.match(await fs.readFile(path.join(project, 'README.md'), 'utf8'), run);
+    await assert.rejects(fs.stat(path.join(project, 'Main.java')), { code: 'ENOENT' });
+  }
+});
+
 test('writes Python manager-specific configuration and resolves installed interpreter versions', async t => {
   const root = await fixture(t);
   const template = starters.find(item => item.id === 'python-desktop');

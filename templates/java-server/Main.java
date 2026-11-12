@@ -5,6 +5,10 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
 public class Main {
+    static String greeting() {
+        return "Hello from __PROJECT_NAME__!";
+    }
+
     public static void main(String[] args) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 8080), 0);
         server.createContext("/", exchange -> {
@@ -19,7 +23,7 @@ public class Main {
                     return;
                 }
 
-                byte[] body = "{\"message\":\"Hello from __PROJECT_NAME__!\"}".getBytes(StandardCharsets.UTF_8);
+                byte[] body = ("{\"message\":\"" + greeting() + "\"}").getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, body.length);
                 try (OutputStream response = exchange.getResponseBody()) {

@@ -12,7 +12,7 @@ npm test
 npm run package
 ```
 
-The build writes `project-wizard-0.5.2.vsix` in this folder. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
+The build writes `project-wizard-0.5.4.vsix` in this folder. In VS Code, open **Extensions**, select **… → Install from VSIX…**, and choose that file.
 
 For development, open this folder in VS Code and press `F5` to start the **Run Project Wizard** Extension Development Host. Open the wizard in that window to test the source directly.
 
@@ -28,9 +28,11 @@ To scaffold inside your current workspace, use **Project Wizard: New Project in 
 
 **Ready to use** is checked by default. Clear it to see starters that need setup. Select one to see its tool requirements and installation guides. Expand **Detected toolchains** to see installed versions and executable locations. Use **Refresh templates** after setup, and restart VS Code if your installer changed PATH. The catalog shows platform-specific starters on their supported systems.
 
-## Template settings
+## Wizard settings and recent projects
 
 Open **Settings** in the New Project wizard. Clear a language to hide all its templates, or clear a specific template to hide it individually. Click **Save settings** to apply your choices across workspaces. The wizard stores them in the VS Code user setting `projectWizard.catalog`.
+
+Select **Open Project Wizard when VS Code starts** and save to show the wizard on startup. This setting starts off. **Recent projects** below the creation form lists up to 10 folders and saved workspaces from VS Code’s **Open Recent** history. Select one to open it in the current window. If the VS Code history command is unavailable, the wizard uses the folders and workspaces it has seen in the current profile.
 
 VR templates are off by default. Select **Enable VR templates** and save to show the **VR** category. You can still enable or disable each VR template individually.
 
@@ -62,6 +64,8 @@ The Kotlin Android XR starter demonstrates a spatial panel and switching between
 
 - **Python** requires a project-local `.venv`. Choose built-in `venv`, `uv`, Conda, or `virtualenv` and select a Python version. The wizard creates the environment and installs the selected packages before opening the project. If setup fails, the generated README and Project Wizard output show how to finish setup.
 - **CMake** offers curated libraries and accepts custom archive dependencies. The format is `name target https://example.com/library.tar.gz [sha256]`, one dependency per line. The generated project uses `FetchContent` to obtain and link the dependencies when you configure the build.
+- **C/C++ build targets** include **Web (Emscripten)** for Raylib and the basic CMake applications. In **Project setup**, select native desktop, web, or both. The native build uses `build/` and the web build produces `build-web/index.html`, JavaScript, and WebAssembly from the same sources. The generated README includes the build and run commands for each selected target. [Emscripten setup](https://emscripten.org/docs/getting_started/downloads.html)
+- **Java** offers **JDK (javac and java)**, **Maven**, and **Gradle** under **Build system** for command-line, Swing, and HTTP server projects. Maven and Gradle starters use `src/main/java`, accept dependencies as `group:artifact:version`, and run the optional JUnit example through the selected build system. The optional JUnit example for the direct JDK starter uses a separate Maven test project.
 - **npm** starters accept one dependency per line, for example `@scope/package@^1.0.0`. The selected packages go into `package.json`.
 - **Tests** are optional. C can use CTest, C++ and CUDA can use GoogleTest or Catch2, Python can use pytest or `unittest`, and JavaScript and TypeScript can use the Node.js test runner or Vitest where supported. C# offers xUnit and NUnit, Java and Kotlin offer JUnit with Maven, and Swift packages offer XCTest. Go, Rust, and Zig offer their native test runners. Follow the generated README to run the example.
 - **CMake test examples** call the same `starter_add` function that the app uses. The implementation is in `src/starter.c` or `src/starter.cpp`, with a declaration in `include/starter.h`. The native Android Raylib samples run these tests on the host compiler.
@@ -79,7 +83,7 @@ Paths and UTF-8 text files up to 1 MiB can contain `__PROJECT_NAME__`, `__PROJEC
 
 Commit this folder to a GitHub repository with Actions enabled. The **Build Project Wizard** workflow in `.github/workflows/build.yml` runs on pushes, pull requests, and manual dispatch. It runs tests on Windows, macOS, and Linux, then packages a VSIX. Open a successful run in the **Actions** tab and download **project-wizard-vsix** from **Artifacts**.
 
-To publish a new version, update `package.json` and `package-lock.json` and push the commit to the default branch. After all three test jobs pass, the workflow creates a versioned release such as `v0.5.2` and attaches the VSIX under **Assets**. Each version belongs to one commit. Bump the version to publish later changes. You can also run the workflow manually on the default branch or push a tag matching the package version.
+To publish a new version, update `package.json` and `package-lock.json` and push the commit to the default branch. After all three test jobs pass, the workflow creates a versioned release such as `v0.5.4` and attaches the VSIX under **Assets**. Each version belongs to one commit. Bump the version to publish later changes. You can also run the workflow manually on the default branch or push a tag matching the package version.
 
 ## Add more starters
 

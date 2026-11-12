@@ -9,7 +9,7 @@ async function readStarterText(file) {
 
 const raylibC = {
   id: 'raylib-c', group: 'raylib', kind: 'starter', label: 'Raylib for C', language: 'C',
-  description: 'A desktop window and game loop with a CMake build.', tools: ['cmake', 'c-compiler'], cmakeTarget: 'game',
+  description: 'A Raylib window and game loop for desktop or web.', tools: ['cmake', 'c-compiler'], cmakeTarget: 'game', webTarget: true,
   requirement: 'CMake 3.24+ and a C compiler. CMake can fetch Raylib during configuration.',
   next: 'Follow the build commands in README.md.',
   files: ['CMakeLists.txt', 'src/main.c', 'gitignore', 'README.md']
@@ -86,11 +86,16 @@ ${template.androidCmake ? `if(ANDROID)\n    ${link}\nendif()` : link}
 `);
   }
   if (template.commands) {
-    const commands = template.commands.length ? ['```sh', ...template.commands, '```', ''] : [];
-    const lines = [`# ${name}`, '', template.description, '', ...commands];
-    if (template.note) lines.push(template.note, '');
-    await fs.writeFile(path.join(project, 'README.md'), lines.join('\n'), { flag: 'wx' });
+    await fs.writeFile(path.join(project, 'README.md'),
+      starterReadme(name, template.description, template.commands, template.note), { flag: 'wx' });
   }
 }
 
-module.exports = { starters, writeStarter };
+function starterReadme(name, description, commands, note) {
+  const lines = [`# ${name}`, '', description, ''];
+  if (commands.length) lines.push('```sh', ...commands, '```', '');
+  if (note) lines.push(note, '');
+  return lines.join('\n');
+}
+
+module.exports = { starters, starterReadme, writeStarter };

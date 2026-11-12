@@ -1,5 +1,9 @@
 public class Main {
+    static String greeting() {
+        return "Hello from __PROJECT_NAME__!";
+    }
+
     public static void main(String[] args) {
-        System.out.println("Hello from __PROJECT_NAME__!");
+        System.out.println(greeting());
     }
 }

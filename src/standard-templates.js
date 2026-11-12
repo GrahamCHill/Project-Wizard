@@ -7,6 +7,7 @@ function starter(id, group, language, label, description, tools, files, commands
     sourceDirectory: options.sourceDirectory,
     note: options.note,
     cmakeTarget: options.cmakeTarget,
+    webTarget: options.webTarget,
     androidCmake: options.androidCmake,
     sdlVersion: options.sdlVersion,
     next: 'Follow the run commands in README.md.'
@@ -68,10 +69,10 @@ function raylibVr(language) {
 const standardTemplates = [
   starter('c-cmake', 'cli', 'C', 'C CMake Application', 'A portable C11 executable with a CMake build.',
     ['cmake', 'c-compiler'], ['CMakeLists.txt', 'src/main.c', 'gitignore'], cmakeBuild,
-    { cmakeTarget: 'app', note: cmakeRun }),
+    { cmakeTarget: 'app', webTarget: true, note: cmakeRun }),
   starter('cpp-cmake', 'cli', 'C++', 'C++ CMake Application', 'A portable C++17 executable with a CMake build.',
     ['cmake', 'cpp-compiler'], ['CMakeLists.txt', 'src/main.cpp', 'gitignore'], cmakeBuild,
-    { cmakeTarget: 'app', note: cmakeRun }),
+    { cmakeTarget: 'app', webTarget: true, note: cmakeRun }),
   starter('qt-widgets', 'desktop', 'C++', 'Qt Widgets Desktop', 'A native Qt 6 Widgets application with a CMake build.',
     ['cmake', 'cpp-compiler', 'qt-widgets'], ['CMakeLists.txt', 'src/main.cpp', 'gitignore'], qtBuild,
     { cmakeTarget: 'app', note: qtRun, requirement: 'Qt 6.5+ Widgets, CMake, and a compatible C++ compiler.' }),
@@ -152,7 +153,7 @@ const standardTemplates = [
     ['apple-sdk'], ['main.m', 'gitignore'], ['xcrun --sdk macosx clang -fobjc-arc main.m -framework AppKit -o app', './app'],
     { platforms: ['darwin'], requirement: 'macOS with the macOS SDK.' }),
 
-  starter('java-cli', 'cli', 'Java', 'Java Command Line', 'A Java application compiled directly with the JDK.',
+  starter('java-cli', 'cli', 'Java', 'Java Command Line', 'A Java command-line application with a greeting.',
     ['java'], ['Main.java', 'gitignore'], ['javac -d out Main.java', 'java -cp out Main']),
   starter('java-desktop', 'desktop', 'Java', 'Java Swing Desktop', 'A desktop window using Swing from the Java standard library.',
     ['java'], ['Main.java', 'gitignore'], ['javac -d out Main.java', 'java -cp out Main']),
@@ -168,7 +169,7 @@ const standardTemplates = [
     ['java', 'kotlin'], ['Main.kt', 'gitignore'], ['kotlinc Main.kt -include-runtime -d app.jar', 'java -jar app.jar'],
     { note: 'Open http://127.0.0.1:8080 after starting the server.' }),
   starter('kotlin-multiplatform', 'general', 'Kotlin', 'Kotlin Multiplatform Library', 'A shared Kotlin library with JVM and Node.js targets and a common test suite.',
-    ['gradle'], ['settings.gradle.kts', 'build.gradle.kts', 'gradle.properties', 'src/commonMain/kotlin/Greeting.kt',
+    ['kmp-gradle'], ['settings.gradle.kts', 'build.gradle.kts', 'gradle.properties', 'src/commonMain/kotlin/Greeting.kt',
       'src/commonTest/kotlin/GreetingTest.kt', 'gitignore'], ['gradle jvmTest jsNodeTest'],
     { requirement: 'Gradle 9.0–9.7 running on a compatible JDK 17 or newer. Gradle downloads Kotlin and Node.js on the first build.',
       note: 'Put shared code in src/commonMain and shared tests in src/commonTest. The example tests the same public function on both targets.' }),

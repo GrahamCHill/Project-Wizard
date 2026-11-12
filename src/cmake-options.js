@@ -1,5 +1,6 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { starterReadme } = require('./starters');
 
 const libraries = [
   { id: 'yyjson', label: 'yyjson (C JSON)', languages: ['C'], target: 'yyjson',
@@ -89,7 +90,7 @@ const testExamples = {
   }
 };
 
-async function writeCmakeOptions(project, template, libraries, framework) {
+async function writeCmakeOptions(project, template, libraries, framework, targets = ['native']) {
   if (!libraries.length && !framework) return;
   const lines = [];
   function addSection(condition, section) {
@@ -114,12 +115,13 @@ async function writeCmakeOptions(project, template, libraries, framework) {
     const tests = path.join(project, 'tests');
     await fs.mkdir(tests);
     await fs.writeFile(path.join(tests, example.file), example.source, { flag: 'wx' });
-    const build = template.androidCmake ? 'build/host-tests' : 'build';
+    const builds = template.androidCmake ? ['build/host-tests'] : targets.map(target => target === 'emscripten' ? 'build-web' : 'build');
     const hostSetup = template.androidCmake ?
-      `Build the tests with a desktop C or C++ compiler.\n\n~~~sh\ncmake -S . -B ${build}\ncmake --build ${build} --config Debug\n~~~\n\n` : '';
+      `Build the tests with a desktop C or C++ compiler.\n\n~~~sh\ncmake -S . -B ${builds[0]}\ncmake --build ${builds[0]} --config Debug\n~~~\n\n` : '';
+    const testCommands = builds.map(build => `ctest --test-dir ${build} -C Debug --output-on-failure`).join('\n');
     await fs.appendFile(path.join(project, 'README.md'),
       '\n## Tests\n\nThe app and test link the same implementation of `starter_add` in `src/`. Run CTest after configuring and building the project.\n\n' +
-      hostSetup + `~~~sh\nctest --test-dir ${build} -C Debug --output-on-failure\n~~~\n\n` +
+      hostSetup + `~~~sh\n${testCommands}\n~~~\n\n` +
       'Use CMake’s -DBUILD_TESTING=OFF option for a build without tests.\n');
   }
   const cmake = path.join(project, 'cmake');
@@ -128,4 +130,27 @@ async function writeCmakeOptions(project, template, libraries, framework) {
   await fs.appendFile(path.join(project, 'CMakeLists.txt'), '\ninclude(cmake/ProjectOptions.cmake)\n');
 }
 
-module.exports = { cmakeLibraries, parseCmakeLibraries, writeCmakeOptions };
+async function configureEmscripten(project, template, name, targets) {
+  const file = path.join(project, 'CMakeLists.txt');
+  const contents = await fs.readFile(file, 'utf8');
+  const desktop = targets.includes('native');
+  const guard = '\nif(NOT EMSCRIPTEN)\n' +
+    '    message(FATAL_ERROR "Configure this web project with emcmake cmake -S . -B build-web")\n' +
+    'endif()\n';
+  const updated = desktop ? contents : contents.replace(/^project\([^\n]+\)\n/m, '$&' + guard);
+  if (!desktop && updated === contents) throw new Error('Could not configure the Emscripten build for this template.');
+  await fs.writeFile(file, updated + '\nif(EMSCRIPTEN)\n' +
+    '    set_target_properties(' + template.cmakeTarget + ' PROPERTIES OUTPUT_NAME index SUFFIX ".html")\n' +
+    '    target_link_options(' + template.cmakeTarget + ' PRIVATE --emrun)\nendif()\n');
+  await fs.appendFile(path.join(project, '.gitignore'), '\nbuild-web/\n');
+  const commands = ['emcmake cmake -S . -B build-web', 'cmake --build build-web', 'emrun build-web/index.html'];
+  const note = 'Put CMake 3.24 or newer on PATH and activate the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) in your terminal. On Windows, also put Ninja or MinGW Make on PATH. Serve the generated HTML, JavaScript, and WebAssembly files together over HTTP.';
+  const readme = path.join(project, 'README.md');
+  if (desktop) {
+    await fs.appendFile(readme, '\n## Web (Emscripten)\n\n' + note + '\n\n```sh\n' + commands.join('\n') + '\n```\n');
+  } else {
+    await fs.writeFile(readme, starterReadme(name, template.description, commands, note));
+  }
+}
+
+module.exports = { cmakeLibraries, configureEmscripten, parseCmakeLibraries, writeCmakeOptions };

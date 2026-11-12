@@ -40,6 +40,7 @@ else()
     set(exclude_names)
     set(exclude_paths)
     if(WIN32)
+        list(APPEND runtime_dirs ${distribution_runtime_dirs})
         foreach(language IN ITEMS C CXX)
             if(CMAKE_${language}_COMPILER)
                 get_filename_component(compiler_dir "${CMAKE_${language}_COMPILER}" DIRECTORY)
@@ -106,6 +107,10 @@ foreach(dependency IN ITEMS sdl2 sdl3 raylib wxwidgets yyjson fmt nlohmann_json 
             DESTINATION "licenses/${dependency}" OPTIONAL COMPONENT ${distribution_component})
     endif()
 endforeach()
+if(wxwidgets_SOURCE_DIR)
+    install(FILES "${wxwidgets_SOURCE_DIR}/docs/licence.txt" "${wxwidgets_SOURCE_DIR}/docs/lgpl.txt"
+        DESTINATION licenses/wxwidgets OPTIONAL COMPONENT ${distribution_component})
+endif()
 if(tinyfiledialogs_SOURCE_DIR)
     install(FILES "${tinyfiledialogs_SOURCE_DIR}/README.txt" DESTINATION licenses/tinyfiledialogs
         COMPONENT ${distribution_component})

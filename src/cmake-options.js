@@ -1,29 +1,30 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { starterReadme } = require('./starters');
+const { cmakeIf, documentLibraryExamples, writeLibraryExample } = require('./cmake-library-examples');
 
 const libraries = [
-  { id: 'yyjson', label: 'yyjson (C JSON)', languages: ['C', 'C++'], target: 'yyjson',
+  { id: 'yyjson', example: 'yyjson.c', label: 'yyjson (C JSON)', languages: ['C', 'C++'], target: 'yyjson',
     url: 'https://github.com/ibireme/yyjson/archive/refs/tags/0.13.0.tar.gz' },
-  { id: 'fmt', label: 'fmt (C++ formatting)', languages: ['C++', 'CUDA'], target: 'fmt::fmt',
+  { id: 'fmt', example: 'fmt.cpp', label: 'fmt (C++ formatting)', languages: ['C++', 'CUDA'], target: 'fmt::fmt',
     url: 'https://github.com/fmtlib/fmt/archive/refs/tags/12.1.0.tar.gz' },
-  { id: 'nlohmann_json', label: 'nlohmann/json (C++ JSON)', languages: ['C++', 'CUDA'], target: 'nlohmann_json::nlohmann_json',
+  { id: 'nlohmann_json', example: 'nlohmann_json.cpp', label: 'nlohmann/json (C++ JSON)', languages: ['C++', 'CUDA'], target: 'nlohmann_json::nlohmann_json',
     url: 'https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz',
     hash: '42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa' },
-  { id: 'cxxopts', label: 'cxxopts (C++ command-line options)', languages: ['C++'], target: 'cxxopts::cxxopts',
+  { id: 'cxxopts', example: 'cxxopts.cpp', label: 'cxxopts (C++ command-line options)', languages: ['C++'], target: 'cxxopts::cxxopts',
     url: 'https://codeload.github.com/jarro2783/cxxopts/tar.gz/refs/tags/v3.3.1' },
-  { id: 'glm', label: 'GLM (C++ graphics math)', languages: ['C++'], target: 'glm::glm',
+  { id: 'glm', example: 'glm.cpp', label: 'GLM (C++ graphics math)', languages: ['C++'], target: 'glm::glm',
     url: 'https://codeload.github.com/g-truc/glm/tar.gz/refs/tags/1.0.3',
     before: ['set(GLM_BUILD_LIBRARY OFF CACHE BOOL "Use header-only GLM")'] },
-  { id: 'stb', label: 'stb (C/C++ image, font and utility headers)', languages: ['C', 'C++'], target: 'stb_headers',
+  { id: 'stb', example: 'stb.c', label: 'stb (C/C++ image, font and utility headers)', languages: ['C', 'C++'], target: 'stb_headers',
     url: 'https://codeload.github.com/nothings/stb/tar.gz/78770d85c4d94787a56c7859017da963bc4f3439',
     cmake: ['add_library(stb_headers INTERFACE)', 'target_include_directories(stb_headers INTERFACE "${stb_SOURCE_DIR}")'] },
-  { id: 'libuv', label: 'libuv (C/C++ TCP and UDP)', languages: ['C', 'C++'], target: 'uv_a', desktopOnly: true,
+  { id: 'libuv', example: 'libuv.c', label: 'libuv (C/C++ TCP and UDP)', languages: ['C', 'C++'], target: 'uv_a', desktopOnly: true,
     url: 'https://dist.libuv.org/dist/v1.53.0/libuv-v1.53.0.tar.gz',
     hash: 'cb0d6dd2128d5a95bd242c6cc982a24fe608fa93da57b6b4ec763b0018c53e64',
     before: ['enable_language(C)', 'set(LIBUV_BUILD_SHARED OFF CACHE BOOL "Build libuv as a static library")'],
     cmake: ['set_target_properties(uv_a PROPERTIES POSITION_INDEPENDENT_CODE ON)'] },
-  { id: 'asio', label: 'Asio (C++ TCP, UDP and async networking)', languages: ['C++'], target: 'asio', desktopOnly: true,
+  { id: 'asio', example: 'asio.cpp', label: 'Asio (C++ TCP, UDP and async networking)', languages: ['C++'], target: 'asio', desktopOnly: true,
     url: 'https://codeload.github.com/chriskohlhoff/asio/tar.gz/refs/tags/asio-1-38-2',
     cmake: [
       'find_package(Threads REQUIRED)',
@@ -35,7 +36,7 @@ const libraries = [
       '    target_link_libraries(asio INTERFACE ws2_32 mswsock)',
       'endif()'
     ] },
-  { id: 'tinyfiledialogs', label: 'tinyfiledialogs (native dialogs)', languages: ['C', 'C++'],
+  { id: 'tinyfiledialogs', example: 'tinyfiledialogs.c', label: 'tinyfiledialogs (native dialogs)', languages: ['C', 'C++'],
     target: 'tinyfiledialogs', repository: 'https://git.code.sf.net/p/tinyfiledialogs/code',
     revision: '26a964253380e4d48c6d7dead03ca13e43e38c8a', desktopOnly: true,
     cmake: [
@@ -47,7 +48,7 @@ const libraries = [
       '    target_link_libraries(tinyfiledialogs PUBLIC comdlg32 ole32 shell32 user32 gdi32)',
       'endif()'
     ] },
-  { id: 'imgui', label: 'Dear ImGui (C++ core)', languages: ['C++'], target: 'imgui',
+  { id: 'imgui', example: 'imgui.cpp', label: 'Dear ImGui (C++ core)', languages: ['C++'], target: 'imgui',
     url: 'https://codeload.github.com/ocornut/imgui/tar.gz/refs/tags/v1.92.8',
     cmake: [
       'add_library(imgui STATIC',
@@ -56,7 +57,7 @@ const libraries = [
       'target_include_directories(imgui PUBLIC "${imgui_SOURCE_DIR}")',
       'set_target_properties(imgui PROPERTIES POSITION_INDEPENDENT_CODE ON)'
     ] },
-  { id: 'bgfx', label: 'bgfx (C++ rendering, desktop)', languages: ['C++'], target: 'bgfx',
+  { id: 'bgfx', example: 'bgfx.cpp', label: 'bgfx (C++ rendering, desktop)', languages: ['C++'], target: 'bgfx',
     content: 'bgfx_cmake', desktopOnly: true,
     url: 'https://codeload.github.com/bkaradzic/bgfx.cmake/tar.gz/refs/tags/v1.168.9624-612',
     before: ['BGFX_BUILD_TOOLS', 'BGFX_BUILD_EXAMPLES', 'BGFX_INSTALL'].map(option =>
@@ -175,15 +176,24 @@ async function writeCmakeOptions(project, template, libraries, framework, target
     }
   }
   if (libraries.length) {
+    const examples = [];
+    if (libraries.some(library => library.example)) {
+      lines.push('option(PROJECT_BUILD_LIBRARY_EXAMPLES "Build the selected library examples" ON)', '');
+    }
     const dependencies = ['include(FetchContent)'];
     for (const library of libraries) {
+      const example = library.example && await writeLibraryExample(project, template, library);
+      if (example) examples.push(example);
+      const link = 'target_link_libraries(' + template.cmakeTarget + ' PRIVATE ' + library.target + ')';
       const setup = [...(library.before || []), ...declare(library),
         'FetchContent_MakeAvailable(' + (library.content || library.id) + ')', ...(library.cmake || []),
-        'target_link_libraries(' + template.cmakeTarget + ' PRIVATE ' + library.target + ')'];
-      dependencies.push(...(library.desktopOnly ? ['if(NOT EMSCRIPTEN)', ...setup.map(line => '    ' + line), 'endif()'] : setup), '');
+        ...(template.androidCmake ? cmakeIf('ANDROID', [link]) : [link]), ...(example?.cmake || [])];
+      const condition = template.androidCmake ? (example ? 'ANDROID OR PROJECT_BUILD_LIBRARY_EXAMPLES' : 'ANDROID') :
+        library.desktopOnly ? 'NOT EMSCRIPTEN' : undefined;
+      dependencies.push(...(condition ? cmakeIf(condition, setup) : setup), '');
     }
-    dependencies.pop();
-    addSection('ANDROID', dependencies);
+    lines.push(...dependencies);
+    if (examples.length) await documentLibraryExamples(project, examples, targets);
     if (libraries.some(library => library.id === 'tinyfiledialogs')) {
       await fs.appendFile(path.join(project, 'README.md'), '\nCMake uses Git to fetch tinyfiledialogs. In C sources, include `<stddef.h>` before `<tinyfiledialogs.h>` for Windows builds. On Linux, install Zenity or KDialog to use graphical file dialogs.\n');
     }

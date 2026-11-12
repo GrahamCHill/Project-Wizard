@@ -338,7 +338,7 @@ test('uses the CMake picker entries as editable dependencies and packages a Vulk
   const c = starters.find(template => template.id === 'sdl3-vulkan-c');
   const raylib = starters.find(template => template.id === 'raylib-cpp');
   const choices = projectOptions(cpp).libraries;
-  const ids = ['tinyfiledialogs', 'imgui', 'bgfx', 'stb', 'cxxopts', 'glm', 'libuv'];
+  const ids = choices.map(choice => choice.id);
   const lines = ids.map(id => choices.find(choice => choice.id === id).line);
   assert.deepEqual(projectOptions(c).libraries.map(choice => choice.id), ['yyjson', 'stb', 'libuv', 'tinyfiledialogs']);
   assert.throws(() => readProjectOptions(raylib, { dependencies: 'bgfx', targets: ['emscripten'] }), /desktop target/);
@@ -355,6 +355,11 @@ test('uses the CMake picker entries as editable dependencies and packages a Vulk
   assert.match(cmake, /add_library\(imgui STATIC/);
   assert.match(cmake, /FetchContent_MakeAvailable\(bgfx_cmake\)/);
   assert.match(cmake, /target_link_libraries\(app PRIVATE uv_a\)/);
+  for (const id of ids) {
+    assert.ok(cmake.includes(`add_executable(example_${id} examples/${id}.cpp)`));
+    assert.match(await fs.readFile(path.join(project, `examples/${id}.cpp`), 'utf8'), /\bint main\(/);
+  }
+  assert.match(cmake, /if\(NOT EMSCRIPTEN\)[\s\S]*add_executable\(example_asio/);
   const distribution = await fs.readFile(path.join(project, 'cmake/Distribution.cmake'), 'utf8');
   assert.match(distribution, /set\(distribution_vulkan ON\)/);
   assert.match(distribution, /add_custom_target\(distribution/);
@@ -735,6 +740,7 @@ test('keeps Android CMake sample tests on the host', async t => {
   });
   const cmake = await fs.readFile(path.join(project, 'cmake', 'ProjectOptions.cmake'), 'utf8');
   assert.match(cmake, /if\(ANDROID\)[\s\S]*target_link_libraries\(game PRIVATE yyjson\)/);
+  assert.match(cmake, /if\(PROJECT_BUILD_LIBRARY_EXAMPLES AND NOT ANDROID\)[\s\S]*add_executable\(example_yyjson examples\/yyjson\.c\)/);
   assert.match(cmake, /if\(NOT ANDROID\)[\s\S]*target_link_libraries\(example_test PRIVATE starter_logic\)/);
   const gradle = await fs.readFile(path.join(project, 'build.gradle.kts'), 'utf8');
   const main = await fs.readFile(path.join(project, 'src', 'main.c'), 'utf8');

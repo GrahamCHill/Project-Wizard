@@ -84,7 +84,7 @@ function buildOptions(template, tools, versions, platform, manager) {
   if (template.cmakeTarget) {
     return { type: 'cmake', libraries: cmakeChoices(template), libraryLabel: 'Common CMake libraries',
       dependencies: 'Additional CMake archives', example: 'name target https://example.com/library.tar.gz [sha256]',
-      dependencyHint: 'Choose a library above or enter a custom archive. Use one line per dependency.',
+      dependencyHint: 'Choose a preset to include a runnable example, or enter a custom archive. Use one line per dependency.',
       targetChoice: template.webTarget ? buildChoice('Target platforms', [
         { id: 'native', label: 'Desktop (native)', tools: template.tools, platformTools: template.platformTools,
           requirement: template.requirement },

@@ -11,4 +11,4 @@ dotnet run -- --self-test
 
 The second command calls the C++ function without opening a window. For a graphics run, the host needs a desktop session, an OpenGL driver, and the system libraries used by Raylib. Build and publish on the target OS and architecture.
 
-See [Raylib-cs](https://github.com/raylib-cs/raylib-cs) for supported native platforms.
+See the [native bridge README](native/README.md) for selected CMake library examples and [Raylib-cs](https://github.com/raylib-cs/raylib-cs) for supported native platforms.

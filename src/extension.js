@@ -11,15 +11,18 @@ const { detectToolchains, getSetup, templateAvailability, templatesForPlatform, 
 const { applyProjectOptions, projectOptions, readProjectOptions } = require('./project-options');
 const { selectPython, setupPython } = require('./python-options');
 const { createReactNativeProject } = require('./react-native');
+const { createNpmProject } = require('./npm-generators');
+const { createExternalProject } = require('./external-generators');
 const { extractZipTemplate, listZipTemplates } = require('./zip-templates');
 const { readCatalogSettings, enabledTemplates } = require('./catalog');
 const { gitProjectStatus, initializeProjectGit } = require('./git-project');
 const { projectHistory } = require('./recent-projects');
+const { executableIconFormats, loadExecutableIcons } = require('./native-app');
 
 const configurationKey = 'projectWizard.zipTemplatesDirectory';
 const catalogKey = 'projectWizard.catalog';
-const projectFiles = '**/{*.csproj,*.fsproj,*.vbproj,Directory.Packages.props,CMakeLists.txt}';
-const generatedFiles = '**/{.git,node_modules,bin,obj,build,.project-wizard-*}/**';
+const projectFiles = '**/{*.csproj,*.fsproj,*.vbproj,Directory.Packages.props,CMakeLists.txt,package.json,project.godot,*.uproject,ProjectVersion.txt,tauri.conf.json}';
+const generatedFiles = '**/{.git,node_modules,bin,obj,build,.next,.nuxt,.output,out,target,.godot,Library,Binaries,Intermediate,.project-wizard-*}/**';
 
 function zipDirectory() {
   return vscode.workspace.getConfiguration().get(configurationKey, '').trim();
@@ -94,6 +97,10 @@ function wizardHtml(webview, extensionUri) {
           <button type="button" data-group="desktop" aria-pressed="false">Desktop</button>
           <button type="button" data-group="mobile" aria-pressed="false">Mobile</button>
           <button type="button" data-group="graphics" aria-pressed="false">Graphics</button>
+          <button type="button" data-group="games" aria-pressed="false">Game Engines</button>
+          <button type="button" data-group="blender" aria-pressed="false">Blender</button>
+          <button type="button" data-group="ai" aria-pressed="false">ML &amp; AI</button>
+          <button type="button" data-group="documents" aria-pressed="false" hidden>Documents</button>
           <button type="button" data-group="vr" aria-pressed="false" hidden>VR</button>
           <button type="button" data-group="frontend" aria-pressed="false">Web Frontend</button>
           <button type="button" data-group="server" aria-pressed="false">Web Server</button>
@@ -171,6 +178,14 @@ function wizardHtml(webview, extensionUri) {
                 <div id="target-choices"></div>
                 <p id="target-choice-help" class="option-hint" hidden>Choose at least one target platform.</p>
               </fieldset>
+              <div id="executable-icon-field" hidden>
+                <label class="option-check"><input id="executable-icon" type="checkbox"> Set executable icon</label>
+                <div id="executable-icon-picker" hidden>
+                  <button id="choose-executable-icons" type="button" class="secondary" aria-describedby="executable-icon-help">Choose icon files…</button>
+                  <p id="executable-icon-help" class="option-hint"></p>
+                  <p id="executable-icon-names" class="option-hint" role="status" hidden></p>
+                </div>
+              </div>
               <div id="python-options" hidden>
                 <label for="python-environment">Python environment</label>
                 <select id="python-environment"></select>
@@ -186,7 +201,7 @@ function wizardHtml(webview, extensionUri) {
               <div id="dependency-options" hidden>
                 <label for="dependencies" id="dependencies-label">Additional dependencies</label>
                 <textarea id="dependencies" rows="2" maxlength="12000" spellcheck="false" autocomplete="off"></textarea>
-                <p class="option-hint">One dependency per line.</p>
+                <p id="dependency-hint" class="option-hint">One dependency per line.</p>
               </div>
               <label id="testing-option" class="option-check" hidden><input id="testing" type="checkbox"> <span id="testing-label"></span></label>
               <div id="test-framework-field" hidden>
@@ -216,6 +231,7 @@ function wizardHtml(webview, extensionUri) {
       <h2 id="settings-heading">Project Wizard settings</h2>
       <label class="option-check"><input id="open-on-startup" type="checkbox"> Open Project Wizard when VS Code starts</label>
       <label class="option-check"><input id="enable-vr" type="checkbox"> Enable VR templates</label>
+      <label class="option-check"><input id="enable-latex" type="checkbox"> Enable LaTeX templates</label>
       <div class="settings-lists">
         <fieldset>
           <legend>Languages</legend>
@@ -350,10 +366,14 @@ function activate(context) {
         id: template.id, group: template.group, label: template.label, language: template.language,
         description: template.description, requirement: template.requirement, ready: template.ready, missing: template.missing,
         options: template.options,
-        disabled: Boolean((template.needsSdk && !sdk.version) || (template.kind === 'react-native' && !template.ready))
+        disabled: Boolean((template.needsSdk && !sdk.version) || (template.kind === 'react-native' && !template.ready) ||
+          (template.generatorNode && (!detected[template.generatorNode] || detected[template.generatorNode].usable === false || !detected.npm)) ||
+          template.generatorTools?.some(id => !detected[id] || detected[id].usable === false))
       })),
       detected: Object.entries(detected).filter(([id, result]) =>
-        !['vite-node', 'expo-node', 'react-native-node', 'android-gradle', 'android-xr-gradle', 'java-17', 'kmp-gradle'].includes(id) && result)
+        !['vite-node', 'expo-node', 'react-native-node', 'next-node', 'nuxt-node', 'electron-node',
+          'android-gradle', 'android-xr-gradle', 'compose-gradle', 'java-17', 'kmp-gradle',
+          'godot-rust', 'laravel-php', 'ml-python'].includes(id) && result)
         .map(([id, result]) => ({ label: toolchains[id].label, ...result }))
         .sort((a, b) => a.label.localeCompare(b.label)),
       sdkVersion: sdk.version, sdkError: sdk.error, monoError, monoCount: mono.length,
@@ -365,7 +385,7 @@ function activate(context) {
     const template = session.templates.get(message.templateId);
     const settings = catalogSettings();
     if (!template || !enabledTemplates([template], settings).length) throw new Error('Select a template from the list.');
-    const options = readProjectOptions(template, message.options);
+    const options = readProjectOptions(template, message.options, session.executableIcons);
     const python = options?.type === 'python' && selectPython(options, session.tools, session.pythonVersions, template);
     if (options?.type === 'python' && !python) {
       throw new Error('Python projects require a virtual environment. Install the selected version or choose a different environment manager.');
@@ -377,8 +397,10 @@ function activate(context) {
       location: vscode.ProgressLocation.Notification, title: 'Creating project…'
     }, () => createProject(message.location, message.name, async (project, parent) => {
       if (template.kind === 'dotnet') await createDotnetProject(template, message.name, project, parent, log);
-      if (template.kind === 'starter') await writeStarter(template, message.name, project, parent, log);
+      if (template.kind === 'starter') await writeStarter(template, message.name, project, parent, log, session.tools);
       if (template.kind === 'react-native') await createReactNativeProject(message.name, project, session.tools, log);
+      if (template.kind === 'npm-generator') await createNpmProject(template, message.name, project, session.tools, log);
+      if (template.kind === 'external-generator') await createExternalProject(template, message.name, project, session.tools, log);
       if (template.kind === 'zip') await extractZipTemplate(template.archive, project, message.name);
       await applyProjectOptions(project, template, message.name, options, parent, log);
       await initializeProjectGit(project, parent, session.tools?.git?.file, message.initializeGit, log);
@@ -470,6 +492,32 @@ function activate(context) {
       return;
     }
     if (message.type === 'chooseZip') return chooseZipDirectory();
+    if (message.type === 'chooseExecutableIcons') {
+      const formats = executableIconFormats(session.templates.get(message.templateId));
+      if (!formats.length) return;
+      session.busy = true;
+      try {
+        const files = await vscode.window.showOpenDialog({
+          title: 'Choose executable icons',
+          defaultUri: vscode.Uri.file(session.parent),
+          canSelectFiles: true,
+          canSelectFolders: false,
+          canSelectMany: formats.length > 1,
+          filters: { 'Executable icons': formats.map(extension => extension.slice(1)) },
+          openLabel: 'Use icons'
+        });
+        if (!files?.length) return;
+        const paths = files.map(folderPath);
+        if (paths.some(file => !file || !formats.includes(path.extname(file).toLowerCase()))) {
+          throw new Error('Choose an icon file in a supported format.');
+        }
+        session.executableIcons = await loadExecutableIcons(paths);
+        return send(session, { type: 'executableIcons',
+          names: Object.fromEntries([...session.executableIcons].map(([format, icon]) => [format, icon.name])) });
+      } finally {
+        session.busy = false;
+      }
+    }
     if (message.type !== 'install' && message.type !== 'create') return;
 
     session.busy = true;

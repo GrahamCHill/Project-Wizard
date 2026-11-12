@@ -12,6 +12,7 @@ const initializeGit = byId('initialize-git');
 const projectSetup = byId('project-options');
 const buildChoiceSelect = byId('build-choice');
 const targetChoices = byId('target-choices');
+const executableIcon = byId('executable-icon');
 const environmentSelect = byId('python-environment');
 const pythonVersion = byId('python-version');
 const testFramework = byId('test-framework');
@@ -24,7 +25,8 @@ const settingsTemplates = byId('settings-templates');
 const recentList = byId('recent-project-list');
 const groupTitles = {
   all: 'Templates', cli: 'Command Line', desktop: 'Desktop', mobile: 'Mobile', graphics: 'Graphics', frontend: 'Web Frontend', server: 'Web Server',
-  monogame: 'MonoGame', raylib: 'Raylib', zip: 'Custom ZIPs', vr: 'VR'
+  monogame: 'MonoGame', raylib: 'Raylib', games: 'Game Engines', blender: 'Blender', ai: 'ML & AI',
+  documents: 'Documents', zip: 'Custom ZIPs', vr: 'VR'
 };
 
 let catalog;
@@ -36,6 +38,7 @@ let loading = true;
 let editedLocation = false;
 let renderedMissing;
 let optionTemplate;
+let executableIconNames = {};
 let catalogDraft;
 let gitLocation;
 let gitStatus;
@@ -77,6 +80,7 @@ function openSettings() {
   byId('settings-error').hidden = true;
   byId('open-on-startup').checked = settings.openOnStartup;
   byId('enable-vr').checked = settings.enableVrTemplates;
+  byId('enable-latex').checked = settings.enableLatexTemplates;
   settingsSearch.value = '';
   const languages = [...new Set(availableTemplates.map(template => template.language).filter(Boolean))].sort();
   settingsLanguages.replaceChildren(...languages.map(language =>
@@ -200,6 +204,23 @@ function selectedTargets() {
   return choices?.options.filter(option => selected.has(option.id)) || [];
 }
 
+function updateExecutableIcon(targets) {
+  const options = optionTemplate?.options;
+  const formats = options?.executableIconFormats || [];
+  const available = formats.length > 0 && (!options.targetChoice || targets.some(target => target.id === 'native'));
+  const enabled = available && executableIcon.checked;
+  byId('executable-icon-field').hidden = !available;
+  byId('executable-icon-picker').hidden = !enabled;
+  const names = formats.map(format => executableIconNames[format]).filter(Boolean);
+  const namesLabel = byId('executable-icon-names');
+  const description = names.join(', ');
+  if (namesLabel.textContent !== description) namesLabel.textContent = description;
+  namesLabel.hidden = !names.length;
+  byId('executable-icon-help').textContent = formats.length === 2 ?
+    'Choose a Windows .ico, a macOS .icns, or both.' : 'Choose a Windows .ico file.';
+  return enabled && names.length === 0;
+}
+
 function updateDependencyField() {
   const options = optionTemplate?.options;
   byId('dependency-options').hidden = !options?.dependencies || (options.type === 'java' && buildChoiceSelect.value === 'jdk');
@@ -216,6 +237,7 @@ function renderProjectOptions(template) {
     projectSetup.open = true;
     byId('dependencies').value = '';
     byId('testing').checked = false;
+    executableIcon.checked = false;
     pythonVersion.value = '';
   }
   const build = options.buildChoice;
@@ -261,6 +283,8 @@ function renderProjectOptions(template) {
   updateDependencyField();
   byId('dependencies-label').textContent = options.dependencies || '';
   byId('dependencies').placeholder = options.example || '';
+  byId('dependency-hint').textContent = options.requiredDependencies?.length ?
+    'Included packages: ' + options.requiredDependencies.join(', ') + '. Enter one additional package per line.' : 'One dependency per line.';
   byId('testing-option').hidden = !options.test;
   byId('testing-label').textContent = options.test || '';
   const previousFramework = preserve ? testFramework.value : '';
@@ -275,6 +299,7 @@ function selectedOptions() {
   return {
     build: selectedBuild()?.id,
     targets: optionTemplate.options.targetChoice ? selectedTargets().map(option => option.id) : undefined,
+    executableIcon: !byId('executable-icon-picker').hidden,
     environment: environmentSelect.value,
     pythonVersion: pythonVersion.value,
     testing: byId('testing').checked,
@@ -335,8 +360,10 @@ function updateForm() {
   byId('git-setup-guide').hidden = !gitStatus?.validLocation || gitStatus.available;
   byId('git-setup-guide').disabled = pending;
   const missingTarget = hasTargets && targets.length === 0;
+  const missingIcon = updateExecutableIcon(targets);
   byId('target-choice-help').hidden = !missingTarget;
-  byId('create').disabled = pending || checkingGit || !template || template.disabled || !name.trim() || !location || !environmentReady || missingTarget;
+  byId('create').disabled = pending || checkingGit || !template || template.disabled || !name.trim() || !location ||
+    !environmentReady || missingTarget || missingIcon;
   byId('refresh').disabled = pending || loading;
   byId('settings').disabled = pending || !catalog;
   for (const control of [nameInput, locationInput, openMode, byId('browse'), byId('choose-zip'), byId('install')]) {
@@ -377,6 +404,9 @@ function updateCatalog() {
   const showVr = catalog?.settings.enableVrTemplates === true;
   categories.querySelector('[data-group="vr"]').hidden = !showVr;
   if (!showVr && group === 'vr') group = 'all';
+  const showLatex = catalog?.settings.enableLatexTemplates === true;
+  categories.querySelector('[data-group="documents"]').hidden = !showLatex;
+  if (!showLatex && group === 'documents') group = 'all';
   byId('catalog-heading').textContent = groupTitles[group];
   for (const button of categories.querySelectorAll('button')) {
     button.setAttribute('aria-pressed', String(button.dataset.group === group));
@@ -464,6 +494,11 @@ buildChoiceSelect.addEventListener('change', () => {
   updateForm();
 });
 targetChoices.addEventListener('change', updateForm);
+executableIcon.addEventListener('change', updateForm);
+byId('choose-executable-icons').addEventListener('click', () => {
+  clearMessage();
+  vscode.postMessage({ type: 'chooseExecutableIcons', templateId: selected });
+});
 environmentSelect.addEventListener('change', () => {
   updateVersionSuggestions();
   updateForm();
@@ -507,6 +542,7 @@ byId('settings-form').addEventListener('submit', event => {
     disabledLanguages: [...catalogDraft.disabledLanguages].sort(),
     disabledTemplates: [...catalogDraft.disabledTemplates].sort(),
     enableVrTemplates: byId('enable-vr').checked,
+    enableLatexTemplates: byId('enable-latex').checked,
     openOnStartup: byId('open-on-startup').checked
   };
   setSettingsSaving(true);
@@ -573,6 +609,10 @@ window.addEventListener('message', ({ data }) => {
     case 'gitLocation':
       if (data.requestId !== gitRequest) break;
       gitStatus = data;
+      updateForm();
+      break;
+    case 'executableIcons':
+      executableIconNames = data.names;
       updateForm();
       break;
     case 'recentProjects':

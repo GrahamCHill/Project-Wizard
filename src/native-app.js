@@ -2,14 +2,22 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { replaceTokens } = require('./projects');
 
-function executableIconSupported(template) {
-  return Boolean(template.cmakeTarget && !template.androidCmake &&
-    (!template.platforms || template.platforms.some(platform => platform === 'win32' || platform === 'darwin')));
+function executableIconFormats(template) {
+  if (!template?.cmakeTarget || template.androidCmake || template.cmakeLibrary) return [];
+  return [['win32', '.ico'], ['darwin', '.icns']].filter(([platform]) =>
+    !template.platforms || template.platforms.includes(platform)).map(([, extension]) => extension);
 }
 
 function validIcon(extension, data) {
   if (extension === '.icns') {
-    return data.length >= 16 && data.toString('ascii', 0, 4) === 'icns' && data.readUInt32BE(4) === data.length;
+    if (data.length < 16 || data.toString('ascii', 0, 4) !== 'icns' || data.readUInt32BE(4) !== data.length) return false;
+    for (let offset = 8; offset < data.length;) {
+      if (offset + 8 > data.length) return false;
+      const size = data.readUInt32BE(offset + 4);
+      if (size < 8 || offset + size > data.length) return false;
+      offset += size;
+    }
+    return true;
   }
   if (data.length < 22 || data.readUInt16LE(0) !== 0 || data.readUInt16LE(2) !== 1) return false;
   const count = data.readUInt16LE(4);
@@ -40,7 +48,7 @@ async function loadExecutableIcons(files) {
 }
 
 async function configureNativeApp(project, template, name, options) {
-  if (template.androidCmake || (options.targets && !options.targets.includes('native'))) return;
+  if (template.androidCmake || template.cmakeLibrary || (options.targets && !options.targets.includes('native'))) return;
   const icons = options.icons;
   const windowsIcon = icons?.get('.ico');
   const macIcon = icons?.get('.icns');
@@ -64,7 +72,7 @@ async function configureNativeApp(project, template, name, options) {
         '    configure_file(assets/app-icon.rc.in app-icon.rc @ONLY)',
         '    set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc" APPEND PROPERTY',
         '        OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/app.ico")',
-        `    target_sources(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc")`,
+        '    target_sources(' + target + ' PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app-icon.rc")',
         'endif()', '');
       notes.push('Windows embeds `assets/app.ico` in the executable.');
     }
@@ -72,9 +80,12 @@ async function configureNativeApp(project, template, name, options) {
   if (macBundle) {
     cmake.push('if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")',
       `    set_target_properties(${target} PROPERTIES`,
+      `        OUTPUT_NAME "${name}"`,
       '        MACOSX_BUNDLE TRUE',
       `        MACOSX_BUNDLE_BUNDLE_NAME "${name}"`,
-      '        MACOSX_BUNDLE_GUI_IDENTIFIER "com.example.__PROJECT_SLUG__"', '    )');
+      '        MACOSX_BUNDLE_GUI_IDENTIFIER "com.example.__PROJECT_SLUG__"',
+      '        MACOSX_BUNDLE_BUNDLE_VERSION "1"',
+      '        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"', '    )');
     if (macIcon) {
       cmake.push('    set_source_files_properties(assets/app.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)',
         `    target_sources(${target} PRIVATE assets/app.icns)`,
@@ -90,4 +101,4 @@ async function configureNativeApp(project, template, name, options) {
   }
 }
 
-module.exports = { configureNativeApp, executableIconSupported, loadExecutableIcons };
+module.exports = { configureNativeApp, executableIconFormats, loadExecutableIcons };

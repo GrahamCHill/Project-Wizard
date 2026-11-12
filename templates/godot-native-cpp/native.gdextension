@@ -1,0 +1,8 @@
+[configuration]
+entry_symbol = "pw_native_init"
+compatibility_minimum = "4.3"
+
+[libraries]
+windows = "res://bin/pw_native.dll"
+linux = "res://bin/libpw_native.so"
+macos = "res://bin/libpw_native.dylib"

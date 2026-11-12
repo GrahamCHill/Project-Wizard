@@ -1,0 +1,16 @@
+{
+  "name": "app-__PROJECT_SLUG__",
+  "productName": "__PROJECT_NAME__",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package"
+  },
+  "config": { "forge": "./forge.config.cjs" },
+  "devDependencies": {
+    "@electron-forge/cli": "^8.0.1",
+    "electron": "^45.3.1"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "__UNREAL_ASSOCIATION__",
+  "Category": "Games",
+  "Description": "__PROJECT_NAME__",
+  "Modules": [
+    { "Name": "__UNREAL_MODULE__", "Type": "Runtime", "LoadingPhase": "Default" }
+  ]
+}

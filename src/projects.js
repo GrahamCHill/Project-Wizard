@@ -26,9 +26,10 @@ function replaceTokens(text, name, sdkMajor) {
     __PROJECT_NAME__: name,
     __PROJECT_IDENTIFIER__: identifier,
     __PROJECT_SLUG__: slug,
+    __PROJECT_SNAKE__: slug.replaceAll('-', '_'),
     __TARGET_FRAMEWORK__: sdkMajor ? `net${sdkMajor}.0` : '__TARGET_FRAMEWORK__'
   };
-  return text.replace(/__PROJECT_NAME__|__PROJECT_IDENTIFIER__|__PROJECT_SLUG__|__TARGET_FRAMEWORK__/g, token => replacements[token]);
+  return text.replace(/__PROJECT_NAME__|__PROJECT_IDENTIFIER__|__PROJECT_SLUG__|__PROJECT_SNAKE__|__TARGET_FRAMEWORK__/g, token => replacements[token]);
 }
 
 function absolutePath(value) {
@@ -188,10 +189,25 @@ async function createDotnetProject(template, name, project, parent, log) {
 }
 
 function detectFrameworks(filename, contents) {
-  if (filename.toLowerCase() === 'cmakelists.txt') {
+  const file = filename.toLowerCase();
+  if (file === 'cmakelists.txt') {
     const cmake = contents.replace(/#\[\[.*?\]\]|#[^\r\n]*/gs, '');
-    return /\b(?:find_package|FetchContent_Declare)\s*\(\s*["']?raylib\b|\btarget_link_libraries\s*\([^)]*\braylib\b/i.test(cmake) ? ['Raylib'] : [];
+    const frameworks = [];
+    if (/\b(?:find_package|FetchContent_Declare)\s*\(\s*["']?raylib\b|\btarget_link_libraries\s*\([^)]*\braylib\b/i.test(cmake)) frameworks.push('Raylib');
+    if (/\bpkg_check_modules\s*\([^)]*\bgtk4\b/i.test(cmake)) frameworks.push('GTK 4');
+    if (/\bpkg_check_modules\s*\([^)]*\bgtkmm-4\.0\b/i.test(cmake)) frameworks.push('GTKmm 4');
+    return frameworks;
   }
+  if (file === 'package.json') {
+    const manifest = parseProjectJson(contents);
+    const dependencies = { ...manifest?.dependencies, ...manifest?.devDependencies };
+    return Object.entries({ next: 'Next.js', nuxt: 'Nuxt', electron: 'Electron', '@tauri-apps/cli': 'Tauri' })
+      .filter(([id]) => Object.hasOwn(dependencies, id)).map(([, label]) => label);
+  }
+  if (file === 'tauri.conf.json') return parseProjectJson(contents) ? ['Tauri'] : [];
+  if (file.endsWith('.uproject')) return parseProjectJson(contents)?.FileVersion ? ['Unreal Engine'] : [];
+  if (file === 'project.godot') return /^config_version\s*=\s*\d+/m.test(contents) ? ['Godot'] : [];
+  if (file === 'projectversion.txt') return /^m_EditorVersion:\s*\d+\./m.test(contents) ? ['Unity'] : [];
   const xml = contents.replace(/<!--[\s\S]*?-->/g, '');
   const packages = [...xml.matchAll(/<Package(?:Reference|Version)\b[^>]*?\b(?:Include|Update)\s*=\s*["']([^"']+)/gi)]
     .map(match => match[1].toLowerCase());
@@ -199,6 +215,14 @@ function detectFrameworks(filename, contents) {
   if (packages.some(name => name.startsWith('monogame.'))) frameworks.push('MonoGame');
   if (packages.includes('raylib-cs')) frameworks.push('Raylib');
   return frameworks;
+}
+
+function parseProjectJson(contents) {
+  try {
+    return JSON.parse(contents.replace(/^\uFEFF/, ''));
+  } catch {
+    return undefined;
+  }
 }
 
 module.exports = {

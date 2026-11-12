@@ -12,15 +12,23 @@ const environments = [
   { id: 'virtualenv', label: 'virtualenv', tool: 'virtualenv' }
 ];
 
-function parsePythonOptions(input, lines, framework) {
+function pythonVersionSupported(version, template) {
+  return !template.pythonMinimum || Number(version.split('.')[1]) >= Number(template.pythonMinimum.split('.')[1]);
+}
+
+function parsePythonOptions(input, lines, framework, template = {}) {
   const environment = environments.find(item => item.id === (input.environment || 'venv'));
   if (!environment) throw new Error('Choose a Python environment manager.');
-  const version = typeof input.pythonVersion === 'string' ? input.pythonVersion.trim() : '';
+  const requested = typeof input.pythonVersion === 'string' ? input.pythonVersion.trim() : '';
+  const version = requested || (template.pythonMinimum && ['uv', 'conda'].includes(environment.id) ? '3.13' : '');
   if (version && !/^3\.(?:[89]|[1-9]\d+)(?:\.\d+)?$/.test(version)) {
     throw new Error('Enter a Python version such as 3.13 or 3.13.2. Python 3.8 or newer is supported.');
   }
+  if (version && !pythonVersionSupported(version, template)) {
+    throw new Error('This template requires Python ' + template.pythonMinimum + ' or newer.');
+  }
   const packages = new Map();
-  for (const line of lines) {
+  for (const line of [...(template.pythonPackages || []), ...lines]) {
     const match = line.match(/^([a-zA-Z0-9][a-zA-Z0-9_.-]*)(?:\[[a-zA-Z0-9_,.-]+\])?(?:(?:~=|==|!=|<=|>=|<|>)[a-zA-Z0-9.*+!-]+(?:,(?:~=|==|!=|<=|>=|<|>)[a-zA-Z0-9.*+!-]+)*)?$/);
     if (!match) throw new Error('Use one Python package per line, for example requests or requests>=2,<3.');
     const name = match[1].toLowerCase().replace(/[-_.]+/g, '-');
@@ -37,6 +45,7 @@ function selectPython(options, tools, versions, template) {
   }
   const virtualenv = tools.virtualenv?.version !== 'Python module' ? tools.virtualenv?.file : undefined;
   const runtime = versions.find(runtime => runtime.usable !== false &&
+    pythonVersionSupported(runtime.version, template) &&
     (!options.version || runtime.version === options.version || runtime.version.startsWith(options.version + '.')) &&
     (template.id !== 'python-desktop' || runtime.tkinter) &&
     (options.environment !== 'virtualenv' || runtime.virtualenv || virtualenv));
@@ -46,6 +55,7 @@ function selectPython(options, tools, versions, template) {
 async function preparePython(project, template, name, options) {
   const { environment, version, packages, pytest, framework } = options;
   const requirements = [...packages, ...(pytest ? [pytest] : [])];
+  const minimum = template.pythonMinimum || '3.8';
   const readme = ['# ' + name, '', template.description, ''];
   const setup = [];
   let runner;
@@ -53,14 +63,14 @@ async function preparePython(project, template, name, options) {
   if (environment === 'uv') {
     const dependencies = packages.map(value => JSON.stringify(value)).join(', ');
     const toml = ['[project]', 'name = ' + JSON.stringify(replaceTokens('__PROJECT_SLUG__', name)),
-      'version = "0.1.0"', 'requires-python = ">=3.8"', 'dependencies = [' + dependencies + ']', ''];
+      'version = "0.1.0"', 'requires-python = ">=' + minimum + '"', 'dependencies = [' + dependencies + ']', ''];
     if (pytest) toml.push('[dependency-groups]', 'dev = [' + JSON.stringify(pytest) + ']', '');
     await fs.writeFile(path.join(project, 'pyproject.toml'), toml.join('\n'), { flag: 'wx' });
     if (version) await fs.writeFile(path.join(project, '.python-version'), version + '\n', { flag: 'wx' });
     setup.push('uv sync');
     runner = 'uv run python';
   } else if (environment === 'conda') {
-    const yaml = ['channels:', '  - conda-forge', '  - nodefaults', 'dependencies:', '  - python' + (version ? '=' + version : '>=3.8')];
+    const yaml = ['channels:', '  - conda-forge', '  - nodefaults', 'dependencies:', '  - python' + (version ? '=' + version : '>=' + minimum)];
     if (template.id === 'python-desktop') yaml.push('  - tk');
     if (requirements.length) yaml.push('  - pip', '  - pip:', ...requirements.map(requirement => '    - ' + JSON.stringify(requirement)));
     await fs.writeFile(path.join(project, 'environment.yml'), yaml.join('\n') + '\n', { flag: 'wx' });
@@ -75,7 +85,7 @@ async function preparePython(project, template, name, options) {
       await fs.writeFile(path.join(project, 'requirements.txt'), requirements.join('\n') + '\n', { flag: 'wx' });
       setup.push(runner + ' -m pip install -r requirements.txt');
     }
-    readme.push(version ? 'Use Python ' + version + '.' : 'Use Python 3.8 or newer.');
+    readme.push(version ? 'Use Python ' + version + '.' : 'Use Python ' + minimum + ' or newer.');
     if (environment === 'virtualenv') readme.push('Install virtualenv into the selected Python interpreter before running setup.');
     readme.push('On Windows, use py -' + (minorVersion || '3') + ' in place of python' + (minorVersion || '3') + ', or use the path to your Python executable.', '');
   }
@@ -83,6 +93,7 @@ async function preparePython(project, template, name, options) {
   if (setup.length) readme.push('## Set up', '', '~~~sh', ...setup, '~~~', '');
   readme.push('## Run', '', '~~~sh', ...template.commands.map(command => command.replace(/^python3\b/, runner)), '~~~', '');
   if (template.id === 'python-server') readme.push('Open http://127.0.0.1:8080 after starting the development server.', '');
+  if (template.pythonMinimum && template.note) readme.push(template.note, '');
   if (framework) {
     await fs.mkdir(path.join(project, 'tests'));
     const sample = 'def add(left: int, right: int) -> int:\n    return left + right\n';
@@ -144,4 +155,4 @@ async function setupPython(project, options, runtime, log) {
   if (options.tkinter) await run(interpreter, ['-I', '-c', 'import tkinter']);
 }
 
-module.exports = { environments, parsePythonOptions, preparePython, selectPython, setupPython };
+module.exports = { environments, parsePythonOptions, preparePython, pythonVersionSupported, selectPython, setupPython };

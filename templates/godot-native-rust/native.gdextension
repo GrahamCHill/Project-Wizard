@@ -1,0 +1,11 @@
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = "4.3"
+
+[libraries]
+windows.debug = "res://target/debug/pw_native.dll"
+linux.debug = "res://target/debug/libpw_native.so"
+macos.debug = "res://target/debug/libpw_native.dylib"
+windows.release = "res://target/release/pw_native.dll"
+linux.release = "res://target/release/libpw_native.so"
+macos.release = "res://target/release/libpw_native.dylib"

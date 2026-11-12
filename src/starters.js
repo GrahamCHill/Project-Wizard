@@ -2,6 +2,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { getSdk, replaceTokens } = require('./projects');
 const { standardTemplates } = require('./standard-templates');
+const { generators } = require('./npm-generators');
+const { externalGenerators } = require('./external-generators');
 
 async function readStarterText(file) {
   return (await fs.readFile(file, 'utf8')).replaceAll('\r\n', '\n');
@@ -47,20 +49,28 @@ const starters = [
     requirement: 'Windows with .NET SDK 8 or newer.', next: 'Run dotnet run from the project folder.'
   },
   ...standardTemplates,
+  ...generators,
+  ...externalGenerators,
   {
     id: 'empty', group: 'general', kind: 'empty', label: 'Empty Project',
     description: 'An empty folder for a new project.', requirement: 'No SDK or build tools required.'
   }
 ];
 
-async function writeStarter(template, name, project, parent, log) {
+async function writeStarter(template, name, project, parent, log, tools = {}) {
   const sdk = template.needsSdk ? await getSdk(parent, log) : undefined;
   const templateRoot = path.join(__dirname, '..', 'templates', template.sourceDirectory || template.id);
   const cpp = template.language === 'C++';
+  const moduleName = 'Game' + name.replace(/[^A-Za-z0-9]/g, '').slice(0, 48);
+  const renderTokens = text => replaceTokens(text, name, sdk?.major)
+    .replaceAll('__UNITY_VERSION__', tools['unity-editor']?.editorVersion || '6000.3.0f1')
+    .replaceAll('__UNREAL_ASSOCIATION__', tools['unreal-editor']?.association || '')
+    .replaceAll('__UNREAL_MODULE__', moduleName)
+    .replaceAll('__UNREAL_API__', moduleName.toUpperCase() + '_API');
   for (const file of template.files) {
     const contents = await readStarterText(path.join(templateRoot, file));
     const output = file === 'gitignore' ? '.gitignore' : cpp && template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
-    const target = path.join(project, replaceTokens(output, name));
+    const target = path.join(project, renderTokens(output));
     await fs.mkdir(path.dirname(target), { recursive: true });
     const rendered = file === 'CMakeLists.txt' ? contents.replaceAll('__CMAKE_LANGUAGE__', cpp ? 'CXX' : 'C')
       .replaceAll('__NATIVE_EXTENSION__', cpp ? 'cpp' : 'c').replaceAll('__NATIVE_STANDARD__', cpp ? 'cxx_std_17' : 'c_std_99') : contents;
@@ -68,7 +78,7 @@ async function writeStarter(template, name, project, parent, log) {
     if (template.sdlVersion) {
       source = source.replaceAll('__SDL_VERSION__', template.sdlVersion).replaceAll('__SDL_MAJOR__', template.sdlVersion[0]);
     }
-    await fs.writeFile(target, replaceTokens(source, name, sdk?.major), { flag: 'wx' });
+    await fs.writeFile(target, renderTokens(source), { flag: 'wx' });
   }
   if (template.cmakeTarget) {
     const shared = path.join(__dirname, '..', 'templates', '_shared', 'native');
@@ -81,7 +91,7 @@ async function writeStarter(template, name, project, parent, log) {
     const link = `target_link_libraries(${template.cmakeTarget} PRIVATE starter_logic)`;
     await fs.appendFile(path.join(project, 'CMakeLists.txt'), `
 add_library(starter_logic STATIC ${implementation})
-target_include_directories(starter_logic PUBLIC "\${CMAKE_CURRENT_SOURCE_DIR}/include")
+${template.cmakeLibrary ? 'set_target_properties(starter_logic PROPERTIES POSITION_INDEPENDENT_CODE ON)\n' : ''}target_include_directories(starter_logic PUBLIC "\${CMAKE_CURRENT_SOURCE_DIR}/include")
 ${template.androidCmake ? `if(ANDROID)\n    ${link}\nendif()` : link}
 `);
   }

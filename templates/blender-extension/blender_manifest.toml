@@ -1,0 +1,12 @@
+schema_version = "1.0.0"
+id = "pw___PROJECT_SNAKE__"
+version = "0.1.0"
+name = "__PROJECT_NAME__"
+tagline = "Add an animated turntable to the scene"
+maintainer = "Project maintainer"
+type = "add-on"
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "/*.zip", "/.git/", "/.gitignore", "/README.md"]

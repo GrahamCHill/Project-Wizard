@@ -159,6 +159,100 @@ const toolchains = {
     instructions: 'Install Node.js 22.13+ on the 22.x line, 24.3+ on the 24.x line, or Node.js 26 or newer.',
     windows: 'winget install --exact --id OpenJS.NodeJS.LTS'
   },
+  'next-node': {
+    label: 'Node.js for Next.js', url: 'https://nodejs.org/en/download',
+    instructions: 'Install the current Node.js LTS release. Next.js requires Node.js 20.9 or newer.'
+  },
+  'nuxt-node': {
+    label: 'Node.js for Nuxt', url: 'https://nodejs.org/en/download',
+    instructions: 'Install Node.js 22.22.3+ on 22.x, 24.15+ on 24.x, or Node.js 26 or newer.'
+  },
+  'electron-node': {
+    label: 'Node.js for Electron Forge', url: 'https://nodejs.org/en/download',
+    instructions: 'Install the current Node.js LTS release. This Electron starter requires Node.js 22.13 or newer.'
+  },
+  'tauri-windows': {
+    label: 'Tauri Windows prerequisites', url: 'https://v2.tauri.app/start/prerequisites/#windows',
+    instructions: 'Install Visual Studio C++ Build Tools and Microsoft Edge WebView2 Runtime. Use the MSVC Rust toolchain.'
+  },
+  'tauri-linux': {
+    label: 'Tauri Linux development files', url: 'https://v2.tauri.app/start/prerequisites/#linux',
+    instructions: 'Install your distribution’s WebKitGTK 4.1, OpenSSL, and other development packages listed in the Tauri guide.'
+  },
+  gtk4: {
+    label: 'GTK 4 development files', url: 'https://www.gtk.org/docs/installations/',
+    instructions: {
+      linux: 'Install the GTK 4 development package and pkg-config (libgtk-4-dev on Debian or Ubuntu).',
+      darwin: 'Install GTK 4 and pkgconf, for example with brew install gtk4 pkgconf.',
+      win32: 'In MSYS2 UCRT64, install mingw-w64-ucrt-x86_64-gtk4, gcc, cmake, ninja, and pkgconf from the same UCRT64 package family. Open VS Code from that shell.'
+    }
+  },
+  'gtkmm-4.0': {
+    label: 'GTKmm 4 development files', url: 'https://www.gtk.org/docs/language-bindings/cpp/',
+    instructions: {
+      linux: 'Install the GTKmm 4 development package and pkg-config (libgtkmm-4.0-dev on Debian or Ubuntu).',
+      darwin: 'Install GTKmm 4 and pkgconf, for example with brew install gtkmm4 pkgconf.',
+      win32: 'In MSYS2 UCRT64, install mingw-w64-ucrt-x86_64-gtkmm-4.0, gcc, cmake, ninja, and pkgconf from the same UCRT64 package family. Open VS Code from that shell.'
+    }
+  },
+  'godot-editor': {
+    label: 'Godot 4 Editor', url: 'https://godotengine.org/download/',
+    instructions: 'Install Godot 4.3 or newer. Put godot on PATH or set GODOT_PATH to the full path of the Godot executable.'
+  },
+  'unity-editor': {
+    label: 'Unity Editor', url: 'https://unity.com/download',
+    instructions: 'Install Unity Hub and a Unity 6.3 or newer Editor. For a custom installation, set UNITY_EDITOR_PATH to the editor executable.'
+  },
+  'unreal-editor': {
+    label: 'Unreal Editor', url: 'https://www.unrealengine.com/download',
+    instructions: 'Install Unreal Engine 5.3 or newer and its required C++ build tools. For a custom install, set UNREAL_ENGINE_ROOT to the directory that contains Engine.'
+  },
+  blender: {
+    label: 'Blender 4.2+', url: 'https://www.blender.org/download/',
+    instructions: 'Install a current Blender release. Add blender to PATH or set BLENDER_PATH to the Blender executable.'
+  },
+  'godot-rust': {
+    label: 'Rust 1.94+ and Cargo', url: 'https://rust-lang.org/tools/install/',
+    instructions: 'Install or update the stable Rust toolchain with rustup. Build for the same architecture as the Godot editor.'
+  },
+  'laravel-php': {
+    label: 'PHP 8.3+ for Laravel', url: 'https://laravel.com/docs/13.x/installation',
+    instructions: 'Install PHP 8.3 or newer and enable the required Laravel extensions, including SQLite and mbstring.'
+  },
+  composer: {
+    label: 'Composer 2', url: 'https://getcomposer.org/download/',
+    instructions: 'Install Composer 2 and add it to PATH. On Windows use the Composer installer with your PHP executable.'
+  },
+  latex: {
+    label: 'pdfLaTeX and BibTeX', url: {
+      win32: 'https://miktex.org/download', darwin: 'https://tug.org/mactex/', linux: 'https://tug.org/texlive/'
+    },
+    instructions: 'Install a TeX distribution with pdflatex and bibtex, and make both available on PATH.'
+  },
+  'ml-python': {
+    label: 'Python 3.11+ or a Python environment manager', url: 'https://www.python.org/downloads/',
+    instructions: 'Install a compatible Python interpreter or use uv or Conda to download one into a project-local environment.'
+  },
+  ollama: {
+    label: 'Ollama', url: 'https://ollama.com/download',
+    instructions: 'Install and start Ollama, then pull a model to use with the local chat example.'
+  },
+  'ios-sdk': {
+    label: 'Xcode and iOS SDK', url: 'https://developer.apple.com/xcode/',
+    instructions: 'Install Xcode and its iOS platform support. Select Xcode as the active developer directory.'
+  },
+  xcodegen: {
+    label: 'XcodeGen', url: 'https://github.com/yonaskolb/XcodeGen#installing',
+    instructions: 'Install XcodeGen to generate the Xcode project from project.yml.', macos: 'brew install xcodegen'
+  },
+  flutter: {
+    label: 'Flutter SDK', url: 'https://docs.flutter.dev/install',
+    instructions: 'Install the stable Flutter SDK and put its bin directory on PATH or set FLUTTER_ROOT. Run flutter doctor for Android and iOS setup.'
+  },
+  'compose-gradle': {
+    label: 'Gradle for Android Compose', url: 'https://gradle.org/releases/',
+    instructions: 'Install Gradle 9.5 or newer and set GRADLE_HOME or add Gradle to PATH. Use a compatible JDK 17 or newer.'
+  },
   npm: {
     label: 'npm', url: 'https://docs.npmjs.com/downloading-and-installing-node-js-and-npm',
     instructions: 'Install the current Node.js LTS distribution with npm included.'
@@ -293,6 +387,11 @@ function supportsVite(version) {
 function supportsReactNative(version) {
   return (version.startsWith('22.') && atLeast(version, 22, 13)) ||
     (version.startsWith('24.') && atLeast(version, 24, 3)) || atLeast(version, 26);
+}
+
+function supportsNuxt(version) {
+  return (version.startsWith('22.') && atLeast(version, 22, 22, 3)) ||
+    (version.startsWith('24.') && atLeast(version, 24, 15)) || atLeast(version, 26);
 }
 
 function requireVersion(tool, ...minimum) {
@@ -432,6 +531,108 @@ async function findVulkanSdk({ env, platform }) {
   return { version: version && patch ? `${version[1]}.${version[2]}.${patch}` : 'SDK', file: root };
 }
 
+async function findGameEditors(settings, probe) {
+  const { env, home, platform } = settings;
+  const windows = platform === 'win32';
+  const mac = platform === 'darwin';
+  const programFiles = env.ProgramFiles || 'C:/Program Files';
+  const isFile = file => file && path.isAbsolute(file) && fs.stat(file).then(stat => stat.isFile(), () => false);
+  const unityRoot = windows ? path.join(programFiles, 'Unity', 'Hub', 'Editor') :
+    mac ? '/Applications/Unity/Hub/Editor' : path.join(home, 'Unity', 'Hub', 'Editor');
+  const unitySuffix = windows ? 'Editor/Unity.exe' : mac ? 'Unity.app/Contents/MacOS/Unity' : 'Editor/Unity';
+  const unrealRoot = windows ? path.join(programFiles, 'Epic Games') : '/Users/Shared/Epic Games';
+  const unrealSuffix = windows ? 'Engine/Binaries/Win64/UnrealEditor.exe' :
+    mac ? 'Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor' : 'Engine/Binaries/Linux/UnrealEditor';
+  const godotVersion = /^(\d+\.\d+(?:\.\d+)?)\./m;
+  const [unityFiles, unrealRoots, godotOnPath, godotCustom] = await Promise.all([
+    subdirectories(unityRoot, unitySuffix),
+    (windows || mac) ? subdirectories(unrealRoot, '') : [],
+    probe(['godot', 'godot4', 'Godot'], ['--version'], godotVersion,
+      mac ? '/Applications/Godot.app/Contents/MacOS' : []),
+    (async () => {
+      const file = env.GODOT_PATH;
+      if (!await isFile(file)) return;
+      const output = await commandOutput(file, ['--version'], settings).catch(() => '');
+      const version = output.match(godotVersion)?.[1];
+      if (version) return { version, file };
+    })()
+  ]);
+  let unity;
+  for (const file of [env.UNITY_EDITOR_PATH, ...unityFiles]) {
+    if (!await isFile(file)) continue;
+    const editorVersion = file.match(/(?:^|[/\\])(\d{4}\.\d+\.\d+f\d+)(?=[/\\])/i)?.[1];
+    if (!editorVersion && file !== env.UNITY_EDITOR_PATH) continue;
+    if (editorVersion && !atLeast(editorVersion.split('f')[0], 6000, 3)) continue;
+    unity = { file, editorVersion, version: editorVersion || 'Custom installation' };
+    break;
+  }
+  let unreal;
+  for (const root of [env.UNREAL_ENGINE_ROOT, ...unrealRoots]) {
+    if (!root || !path.isAbsolute(root)) continue;
+    const file = path.join(root, unrealSuffix);
+    if (!await isFile(file)) continue;
+    const build = await fs.readFile(path.join(root, 'Engine', 'Build', 'Build.version'), 'utf8')
+      .then(data => JSON.parse(data.replace(/^\uFEFF/, ''))).catch(() => undefined);
+    if (!Number.isInteger(build?.MajorVersion) || !Number.isInteger(build?.MinorVersion) || build.MajorVersion !== 5 || build.MinorVersion < 3) continue;
+    const release = `${build.MajorVersion}.${build.MinorVersion}`;
+    const association = unrealRoots.includes(root) ? release : '';
+    unreal = { file, version: release + '.' + (Number.isInteger(build.PatchVersion) ? build.PatchVersion : 0), association };
+    break;
+  }
+  return { 'unity-editor': unity, 'unreal-editor': unreal, 'godot-editor': requireVersion(godotCustom || godotOnPath, 4, 3) };
+}
+
+async function findWebView(settings) {
+  const { env } = settings;
+  const roots = [env['ProgramFiles(x86)'], env.ProgramFiles, env.LOCALAPPDATA].filter(Boolean);
+  for (const root of roots) {
+    for (const file of await subdirectories(path.join(root, 'Microsoft', 'EdgeWebView', 'Application'), 'msedgewebview2.exe')) {
+      if (await fs.stat(file).then(stat => stat.isFile(), () => false)) return { version: path.basename(path.dirname(file)), file };
+    }
+  }
+}
+
+async function findSupplementalTools(settings, probe, directories, appleSdk) {
+  const { env, home, platform } = settings;
+  const windows = platform === 'win32';
+  const mac = platform === 'darwin';
+  const blenderFolders = windows && env.ProgramFiles ?
+    await subdirectories(path.join(env.ProgramFiles, 'Blender Foundation'), '') : [];
+  const flutterFolders = directories(env.FLUTTER_ROOT && path.join(env.FLUTTER_ROOT, 'bin'),
+    path.join(home, 'flutter', 'bin'), path.join(home, 'development', 'flutter', 'bin'));
+  const [blender, composer, latex, ollama, xcodegen, iosVersion, flutterFiles] = await Promise.all([
+    probe(['blender'], ['--version'], /\bBlender (\d+\.\d+(?:\.\d+)?)/i, [
+      ...blenderFolders, mac && '/Applications/Blender.app/Contents/MacOS',
+      env.BLENDER_PATH && path.dirname(env.BLENDER_PATH)
+    ]),
+    probe(['composer'], ['--version'], /Composer(?: version)?\s+(\d+\.\d+\.\d+)/i),
+    probe(['pdflatex'], ['--version'], /pdfTeX[^\r\n]*?(\d+\.\d+(?:\.\d+)?)/i),
+    probe(['ollama'], ['--version'], /\bversion(?: is)?\s+(\d+\.\d+\.\d+)/i, [
+      windows && env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs', 'Ollama'),
+      mac && '/Applications/Ollama.app/Contents/Resources'
+    ]),
+    mac ? probe(['xcodegen'], ['--version'], /(\d+\.\d+\.\d+)/) : undefined,
+    mac && appleSdk ? commandOutput('/usr/bin/xcrun', ['--sdk', 'iphoneos', '--show-sdk-version'], settings).catch(() => '') : '',
+    candidates(['flutter'], flutterFolders, platform)
+  ]);
+  const bibtex = latex && (await candidates(['bibtex'], directories(path.dirname(latex.file)), platform))[0];
+  let flutter;
+  if (flutterFiles.length) {
+    const file = flutterFiles[0];
+    const resolved = await fs.realpath(file).catch(() => file);
+    const metadata = await fs.readFile(path.join(path.dirname(resolved), 'cache', 'flutter.version.json'), 'utf8')
+      .then(JSON.parse).catch(() => undefined);
+    flutter = { file, version: typeof metadata?.frameworkVersion === 'string' ? metadata.frameworkVersion : 'SDK found' };
+  }
+  return {
+    blender: requireVersion(blender, 4, 2),
+    composer: requireVersion(composer, 2),
+    latex: bibtex ? latex : undefined,
+    ollama, xcodegen, flutter,
+    'ios-sdk': /^\d+(?:\.\d+)+$/.test(iosVersion) ? { version: iosVersion, file: '/usr/bin/xcrun' } : undefined
+  };
+}
+
 async function detectToolchains(settings = system) {
   const { platform, env, home } = settings;
   const fromPath = pathDirectories(env);
@@ -517,10 +718,25 @@ async function detectToolchains(settings = system) {
   const systemCompiler = studio ? { version: 'MSVC', file: studio.file } : appleSdk ? { version: 'Apple Clang', file: appleSdk.file } : undefined;
   const virtualenvRuntime = pythonVersions.find(runtime => runtime.usable && runtime.virtualenv);
   const pkgConfig = (module) => probe(['pkg-config', 'pkgconf'], ['--modversion', module], /^(\d+(?:\.\d+)*)/);
-  const [wx, gtk, x11, wayland, gl] = platform === 'linux' ? await Promise.all([
+  const linuxGraphics = platform === 'linux' ? Promise.all([
     probe(['wx-config'], ['--version'], /^(\d+\.\d+\.\d+)/),
     pkgConfig('gtk+-3.0'), pkgConfig('x11'), pkgConfig('wayland-client'), pkgConfig('gl')
   ]) : [];
+  const gtkKit = async (module, compilerName) => {
+    const kit = await pkgConfig(module);
+    if (!windows || !kit) return kit;
+    const tools = path.dirname(kit.file);
+    const required = await Promise.all([compilerName, 'ninja', 'cmake'].map(name => candidates([name], [tools], platform)));
+    return required.every(files => files.length) ? kit : undefined;
+  };
+  const [[wx, gtk, x11, wayland, gl], gtk4, gtkmm, webkit, ssl, webView, editors, supplemental] = await Promise.all([
+    linuxGraphics, gtkKit('gtk4', 'gcc'), gtkKit('gtkmm-4.0', 'g++'),
+    platform === 'linux' ? pkgConfig('webkit2gtk-4.1') : undefined,
+    platform === 'linux' ? pkgConfig('openssl') : undefined,
+    windows && studio ? findWebView(settings) : undefined,
+    findGameEditors(settings, probe),
+    findSupplementalTools(settings, probe, directories, appleSdk)
+  ]);
   const results = {
     git,
     python, uv, conda, virtualenv: virtualenv || virtualenvRuntime && { version: 'Python module', file: virtualenvRuntime.file },
@@ -539,6 +755,10 @@ async function detectToolchains(settings = system) {
     'kmp-gradle': gradle && { ...gradle, usable: atLeast(gradle.version, 9) && !atLeast(gradle.version, 9, 8) },
     'android-gradle': requireVersion(gradle, 9, 3, 1),
     'android-xr-gradle': requireVersion(gradle, 9, 5),
+    'compose-gradle': requireVersion(gradle, 9, 5),
+    'godot-rust': rustc && cargo ? requireVersion(rustc, 1, 94) : undefined,
+    'laravel-php': requireVersion(php, 8, 3),
+    'ml-python': pythonVersions.find(runtime => runtime.usable && atLeast(runtime.version, 3, 11)),
     ...android,
     ruby: requireVersion(ruby, 3), bundler, php: requireVersion(php, 8), lua, love: requireVersion(love, 11),
     zig,
@@ -546,6 +766,12 @@ async function detectToolchains(settings = system) {
     'vite-node': node && supportsVite(node.version) ? node : undefined,
     'expo-node': requireVersion(node, 22, 13),
     'react-native-node': node && supportsReactNative(node.version) ? node : undefined,
+    'next-node': requireVersion(node, 20, 9),
+    'nuxt-node': node && { ...node, usable: supportsNuxt(node.version) },
+    'electron-node': requireVersion(node, 22, 13),
+    'tauri-windows': webView,
+    'tauri-linux': ssl ? webkit : undefined,
+    gtk4, 'gtkmm-4.0': gtkmm,
     npm,
     cmake: requireVersion(cmake, 3, 24),
     'c-compiler': systemCompiler || compiler,
@@ -555,7 +781,9 @@ async function detectToolchains(settings = system) {
     'opengl-dev': gl,
     'vulkan-dev': requireVersion(vulkanSdk || (!windows ? await pkgConfig('vulkan') : undefined), 1, 3, 216),
     cuda,
-    ...qt
+    ...qt,
+    ...editors,
+    ...supplemental
   };
   return { results, manager, pythonVersions };
 }
@@ -577,7 +805,10 @@ function getSetup(id, platform, manager) {
 function templateAvailability(template, tools, platform, manager) {
   const supported = !template.platforms || template.platforms.includes(platform);
   const available = { ...tools };
-  if (template.language === 'Python' && (tools.uv || tools.conda)) available.python = { usable: true };
+  if (template.language === 'Python' && (tools.uv || tools.conda)) {
+    available.python = { usable: true };
+    available['ml-python'] = { usable: true };
+  }
   if (template.language === 'Python' && tools.conda) available.tkinter = { usable: true };
   const required = [...(template.tools || []), ...(template.platformTools?.[platform] || [])];
   const missing = required.filter(id => !available[id] || available[id].usable === false).map(id => getSetup(id, platform, manager));

@@ -1,0 +1,18 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://game/player/player.tscn" id="1"]
+
+[node name="Main" type="Node2D"]
+
+[node name="Title" type="Label" parent="."]
+offset_left = 24.0
+offset_top = 24.0
+text = "__PROJECT_NAME__"
+
+[node name="Controls" type="Label" parent="."]
+offset_left = 24.0
+offset_top = 52.0
+text = "Arrow keys to move"
+
+[node name="Player" parent="." instance=ExtResource("1")]
+position = Vector2(400, 240)

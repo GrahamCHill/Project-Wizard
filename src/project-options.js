@@ -1,13 +1,14 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { cmakeLibraries, configureEmscripten, parseCmakeLibraries, writeCmakeOptions } = require('./cmake-options');
-const { environments, parsePythonOptions, preparePython, selectPython } = require('./python-options');
+const { environments, parsePythonOptions, preparePython, pythonVersionSupported, selectPython } = require('./python-options');
 const { addDotnetTests, addJvmTests, addSwiftTests } = require('./extra-tests');
 const { replaceTokens } = require('./projects');
 const { configureJava, parseJavaDependencies } = require('./java-options');
+const { configureNativeApp, executableIconFormats } = require('./native-app');
 const { templateAvailability } = require('./toolchains');
 
-const npmTemplates = ['javascript-frontend', 'javascript-server', 'typescript-frontend', 'expo-mobile'];
+const npmTemplates = ['javascript-frontend', 'javascript-server', 'typescript-frontend', 'expo-mobile', 'electron'];
 const npmOptions = { type: 'npm', dependencies: 'npm packages', example: '@scope/package@^1.0.0' };
 const testLabels = {
   ctest: 'CTest', gtest: 'GoogleTest', catch2: 'Catch2', pytest: 'pytest', unittest: 'unittest',
@@ -44,12 +45,14 @@ function buildChoice(label, choices, tools, platform, manager) {
 
 function projectOptions(template, tools = {}, versions = [], platform = process.platform, manager) {
   if (template.kind === 'react-native') return npmOptions;
+  if (template.kind === 'npm-generator') return { ...npmOptions, ...testOptions('node', 'vitest') };
   if (template.kind === 'dotnet' || template.id === 'raylib-csharp') {
     return { type: 'dotnet-tests', ...testOptions('xunit', 'nunit') };
   }
   if (template.kind !== 'starter') return;
   if (template.cmakeTarget) {
     return { type: 'cmake', libraries: cmakeLibraries(template).map(({ id, label }) => ({ id, label })),
+      executableIconFormats: executableIconFormats(template),
       dependencies: 'Additional CMake archives', example: 'name target https://example.com/library.tar.gz [sha256]',
       targetChoice: template.webTarget ? buildChoice('Target platforms', [
         { id: 'native', label: 'Desktop (native)', tools: template.tools, platformTools: template.platformTools,
@@ -63,19 +66,20 @@ function projectOptions(template, tools = {}, versions = [], platform = process.
     return { type: 'java', buildChoice: buildChoice('Build system', javaBuilds, tools, platform, manager),
       dependencies: 'Java dependencies', example: 'org.apache.commons:commons-lang3:3.20.0', ...testOptions('junit') };
   }
-  if (template.language === 'Python') {
+  if (template.language === 'Python' && !template.embeddedPython) {
     const managers = environments.map(environment => {
       const id = environment.id;
       const local = id === 'venv' || id === 'virtualenv';
       const available = Boolean(selectPython({ environment: id }, tools, versions, template));
-      const interpreters = versions.filter(runtime => runtime.usable &&
+      const interpreters = versions.filter(runtime => runtime.usable && pythonVersionSupported(runtime.version, template) &&
         (!local || selectPython({ environment: id }, tools, [runtime], template)));
       return { ...environment, available, versions: [...new Set(interpreters.map(runtime => runtime.version))] };
     });
     const preferred = template.id === 'python-desktop' ? ['venv', 'conda', 'virtualenv', 'uv'] : ['venv', 'uv', 'conda', 'virtualenv'];
     const defaultEnvironment = preferred.find(id => managers.some(manager => manager.id === id && manager.available)) || 'venv';
     return { type: 'python', environments: managers, defaultEnvironment,
-      dependencies: 'Python packages', example: 'requests>=2,<3', ...testOptions('pytest', 'unittest') };
+      dependencies: 'Python packages', example: 'requests>=2,<3', requiredDependencies: template.pythonPackages,
+      ...testOptions('pytest', 'unittest') };
   }
   if (npmTemplates.includes(template.id)) {
     return { ...npmOptions, ...testOptions(...(template.id === 'expo-mobile' ? ['node'] : ['node', 'vitest'])) };
@@ -102,7 +106,7 @@ function parseNpmLibraries(lines) {
   return packages;
 }
 
-function readProjectOptions(template, input = {}) {
+function readProjectOptions(template, input = {}, selectedIcons) {
   const config = projectOptions(template);
   if (!config) return;
   if (!input || typeof input !== 'object') throw new Error('Invalid project options.');
@@ -113,7 +117,7 @@ function readProjectOptions(template, input = {}) {
   const framework = input.testing === true ? input.framework || frameworks[0]?.id : undefined;
   if (framework && !frameworks.some(item => item.id === framework)) throw new Error('Choose a supported test framework.');
   if (config.type === 'python') {
-    return { type: config.type, tkinter: template.id === 'python-desktop', ...parsePythonOptions(input, lines, framework) };
+    return { type: config.type, tkinter: template.id === 'python-desktop', ...parsePythonOptions(input, lines, framework, template) };
   }
   const builds = config.buildChoice?.options;
   const build = builds && (input.build || builds[0].id);
@@ -128,6 +132,7 @@ function readProjectOptions(template, input = {}) {
     targets = [...new Set(selected)];
   }
   let packages;
+  let icons;
   if (config.type === 'java') {
     if (build === 'jdk' && lines.length) throw new Error('Choose Maven or Gradle to add Java dependencies.');
     packages = parseJavaDependencies(lines);
@@ -137,10 +142,17 @@ function readProjectOptions(template, input = {}) {
     }
   } else if (config.type === 'cmake') {
     packages = parseCmakeLibraries(template, Array.isArray(input.libraries) ? input.libraries : [], lines);
+    if (input.executableIcon === true) {
+      if (!config.executableIconFormats.length || (targets && !targets.includes('native'))) {
+        throw new Error('Select a native executable target to set an icon.');
+      }
+      icons = new Map([...(selectedIcons || [])].filter(([format]) => config.executableIconFormats.includes(format)));
+      if (!icons.size) throw new Error('Choose an executable icon file.');
+    }
   } else if (config.type === 'npm') {
     packages = parseNpmLibraries(lines);
   }
-  return { type: config.type, packages, framework, build, targets };
+  return { type: config.type, packages, framework, build, targets, icons };
 }
 
 async function appendTest(project, file, source, command, label) {
@@ -199,6 +211,7 @@ async function applyProjectOptions(project, template, name, options, parent, log
   if (!options) return;
   if (options.type === 'cmake') {
     if (options.targets?.includes('emscripten')) await configureEmscripten(project, template, name, options.targets);
+    await configureNativeApp(project, template, name, options);
     return writeCmakeOptions(project, template, options.packages, options.framework, options.targets);
   }
   if (options.type === 'java') return configureJava(project, template, name, options);

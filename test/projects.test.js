@@ -8,7 +8,7 @@ const { pipeline } = require('node:stream/promises');
 const { test } = require('node:test');
 const { promisify } = require('node:util');
 const { ZipFile } = require('yazl');
-const { createProject, detectFrameworks, parseMonoGameTemplates, validateProjectName } = require('../src/projects');
+const { createProject, detectFrameworks, parseMonoGameTemplates, replaceTokens, validateProjectName } = require('../src/projects');
 const { starters, writeStarter } = require('../src/starters');
 const { getSetup, supportsReactNative, supportsVite, templateAvailability, templatesForPlatform } = require('../src/toolchains');
 const { applyProjectOptions, projectOptions, readProjectOptions } = require('../src/project-options');
@@ -17,6 +17,7 @@ const { extractZipTemplate, listZipTemplates } = require('../src/zip-templates')
 const { reactNativeIdentifier } = require('../src/react-native');
 const { enabledTemplates, readCatalogSettings } = require('../src/catalog');
 const { gitProjectStatus, initializeProjectGit } = require('../src/git-project');
+const { loadExecutableIcons } = require('../src/native-app');
 
 const exec = promisify(execFile);
 
@@ -163,12 +164,49 @@ test('generates the bundled source templates with portable names and run instruc
     for (const file of template.files) {
       const output = file === 'gitignore' ? '.gitignore' :
         template.language === 'C++' && template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
-      const generated = path.join(project, output);
+      const moduleName = 'Game9ExampleProject';
+      const generated = path.join(project, replaceTokens(output, name).replaceAll('__UNREAL_MODULE__', moduleName));
       assert.doesNotMatch(await fs.readFile(generated, 'utf8'), /__PROJECT_[A-Z]+__/);
     }
     const readme = await fs.readFile(path.join(project, 'README.md'), 'utf8');
     assert.match(readme, /^# 9 Example Project/);
     if (template.commands.length) assert.ok(readme.includes(template.commands[0]));
+  }
+});
+
+test('recognizes web, desktop, and game project files', () => {
+  assert.deepEqual(detectFrameworks('package.json', '{"dependencies":{"nuxt":"^4","next":"^16"},"devDependencies":{"electron":"^45"}}'),
+    ['Next.js', 'Nuxt', 'Electron']);
+  assert.deepEqual(detectFrameworks('package.json', '{invalid'), []);
+  assert.deepEqual(detectFrameworks('tauri.conf.json', '{"productName":"Example"}'), ['Tauri']);
+  assert.deepEqual(detectFrameworks('CMakeLists.txt', 'pkg_check_modules(GTKMM REQUIRED IMPORTED_TARGET gtkmm-4.0)'), ['GTKmm 4']);
+  assert.deepEqual(detectFrameworks('project.godot', 'config_version=5'), ['Godot']);
+  assert.deepEqual(detectFrameworks('ProjectVersion.txt', 'm_EditorVersion: 6000.3.0f1'), ['Unity']);
+  assert.deepEqual(detectFrameworks('Game.uproject', '{"FileVersion":3}'), ['Unreal Engine']);
+});
+
+test('uses installed game editor versions and connects generated engine assets', async t => {
+  const root = await fixture(t);
+  const tools = { 'unity-editor': { editorVersion: '6000.6.8f1' }, 'unreal-editor': { association: '5.8' } };
+  for (const id of ['unity', 'unreal', 'godot']) {
+    const template = starters.find(item => item.id === id);
+    const name = id + ' 9';
+    const project = await createProject(root, name, (target, parent) => writeStarter(template, name, target, parent, undefined, tools));
+    const read = file => fs.readFile(path.join(project, file), 'utf8');
+    if (id === 'unity') {
+      assert.match(await read('ProjectSettings/ProjectVersion.txt'), /6000\.6\.8f1/);
+      const guid = (await read('Assets/Game/Scripts/DemoScene.cs.meta')).match(/guid: (\w+)/)[1];
+      assert.ok((await read('Assets/Game/Scenes/Demo.unity')).includes(guid));
+    } else if (id === 'unreal') {
+      const descriptor = JSON.parse(await read('Gameunreal9.uproject'));
+      assert.equal(descriptor.EngineAssociation, '5.8');
+      assert.equal(descriptor.Modules[0].Name, 'Gameunreal9');
+      assert.match(await read('Source/Gameunreal9/Public/SpinningActor.h'), /GAMEUNREAL9_API/);
+    } else {
+      assert.match(await read('project.godot'), /res:\/\/game\/main\.tscn/);
+      assert.match(await read('game/main.tscn'), /res:\/\/game\/player\/player\.tscn/);
+      assert.match(await read('game/player/player.tscn'), /res:\/\/game\/player\/player\.gd/);
+    }
   }
 });
 
@@ -262,8 +300,13 @@ test('configures the Emscripten target for both Raylib and basic CMake languages
       await applyProjectOptions(target, template, id, options);
     });
     const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
-    if (desktop) assert.doesNotMatch(cmake, /if\(NOT EMSCRIPTEN\)/);
-    else assert.match(cmake, /if\(NOT EMSCRIPTEN\)/);
+    if (desktop) {
+      assert.doesNotMatch(cmake, /if\(NOT EMSCRIPTEN\)/);
+      assert.match(cmake, /if\(CMAKE_SYSTEM_NAME STREQUAL "Darwin"\)[\s\S]+MACOSX_BUNDLE TRUE/);
+    } else {
+      assert.match(cmake, /if\(NOT EMSCRIPTEN\)/);
+      assert.doesNotMatch(cmake, /MACOSX_BUNDLE/);
+    }
     assert.match(cmake, /if\(EMSCRIPTEN\)/);
     assert.match(cmake, /OUTPUT_NAME index SUFFIX "\.html"/);
     const readme = await fs.readFile(path.join(project, 'README.md'), 'utf8');
@@ -274,6 +317,52 @@ test('configures the Emscripten target for both Raylib and basic CMake languages
     if (desktop) assert.match(readme, /^ctest --test-dir build -C Debug/m);
   }
   assert.equal(projectOptions(starters.find(item => item.id === 'cuda-cmake')).targetChoice, undefined);
+});
+
+test('scaffolds executable icons and a macOS bundle alongside a Raylib web target', async t => {
+  const root = await fixture(t);
+  const template = starters.find(item => item.id === 'raylib-cpp');
+  const cuda = starters.find(item => item.id === 'cuda-cmake');
+  const android = starters.find(item => item.id === 'raylib-vr-android-c');
+  assert.deepEqual(projectOptions(template).executableIconFormats, ['.ico', '.icns']);
+  assert.deepEqual(projectOptions(cuda).executableIconFormats, ['.ico']);
+  assert.deepEqual(projectOptions(android).executableIconFormats, []);
+  assert.throws(() => readProjectOptions(template, { executableIcon: true }), /Choose an executable icon file/);
+  assert.throws(() => readProjectOptions(template, { executableIcon: true, targets: ['emscripten'] }), /native executable target/);
+
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1sAAAAASUVORK5CYII=', 'base64');
+  const icoHeader = Buffer.from([0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 32, 0, 0, 0, 0, 0, 22, 0, 0, 0]);
+  icoHeader.writeUInt32LE(png.length, 14);
+  const icnsHeader = Buffer.from('icns\x00\x00\x00\x00icp4\x00\x00\x00\x00', 'ascii');
+  icnsHeader.writeUInt32BE(icnsHeader.length + png.length, 4);
+  icnsHeader.writeUInt32BE(8 + png.length, 12);
+  const ico = Buffer.concat([icoHeader, png]);
+  const icns = Buffer.concat([icnsHeader, png]);
+  const winFile = path.join(root, 'Windows Icon.ICO');
+  const macFile = path.join(root, 'macOS Icon.icns');
+  const invalidFile = path.join(root, 'Invalid.ico');
+  await fs.writeFile(winFile, ico);
+  await fs.writeFile(macFile, icns);
+  await fs.writeFile(invalidFile, 'invalid');
+  await assert.rejects(loadExecutableIcons([invalidFile]), /valid .ico file/);
+  await assert.rejects(loadExecutableIcons([winFile, invalidFile]), /up to one/);
+  const icons = await loadExecutableIcons([winFile, macFile]);
+  const options = readProjectOptions(template, { executableIcon: true, targets: ['native', 'emscripten'] }, icons);
+  const name = 'Raylib Game';
+  const project = await createProject(root, name, async (target, parent) => {
+    await writeStarter(template, name, target, parent);
+    await applyProjectOptions(target, template, name, options);
+  });
+  assert.deepEqual(await fs.readFile(path.join(project, 'assets/app.ico')), ico);
+  assert.deepEqual(await fs.readFile(path.join(project, 'assets/app.icns')), icns);
+  assert.match(await fs.readFile(path.join(project, 'assets/app-icon.rc.in'), 'utf8'), /1 ICON "@CMAKE_CURRENT_SOURCE_DIR@\/assets\/app.ico"/);
+  const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
+  assert.match(cmake, /if\(WIN32 AND NOT EMSCRIPTEN\)\s+enable_language\(RC\)/);
+  assert.match(cmake, /MACOSX_BUNDLE_BUNDLE_NAME "Raylib Game"/);
+  assert.match(cmake, /MACOSX_BUNDLE_GUI_IDENTIFIER "com.example.raylib-game"/);
+  assert.match(cmake, /MACOSX_PACKAGE_LOCATION Resources/);
+  assert.match(cmake, /MACOSX_BUNDLE_ICON_FILE "app.icns"/);
+  assert.match(cmake, /OUTPUT_NAME index SUFFIX "\.html"/);
 });
 
 test('creates Maven and Gradle Java applications with selected dependencies and JUnit', async t => {

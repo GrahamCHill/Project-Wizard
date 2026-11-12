@@ -2,7 +2,7 @@
   "name": "project-wizard",
   "displayName": "Project Wizard",
   "description": "Create CLI, desktop, mobile, web, and game projects with local toolchain detection and custom ZIP templates.",
-  "version": "0.5.4",
+  "version": "0.7.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -64,12 +64,13 @@
           "type": "object",
           "scope": "application",
           "description": "Configure Project Wizard startup and template visibility.",
-          "default": { "disabledLanguages": [], "disabledTemplates": [], "enableVrTemplates": false, "openOnStartup": false },
+          "default": { "disabledLanguages": [], "disabledTemplates": [], "enableVrTemplates": false, "enableLatexTemplates": false, "openOnStartup": false },
           "additionalProperties": false,
           "properties": {
             "disabledLanguages": { "type": "array", "items": { "type": "string" }, "description": "Language names hidden in the catalog." },
             "disabledTemplates": { "type": "array", "items": { "type": "string" }, "description": "Template IDs hidden in the catalog." },
             "enableVrTemplates": { "type": "boolean", "description": "Show the optional VR template set." },
+            "enableLatexTemplates": { "type": "boolean", "description": "Show the optional LaTeX templates." },
             "openOnStartup": { "type": "boolean", "description": "Open Project Wizard when VS Code starts." }
           }
         }

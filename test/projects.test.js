@@ -428,7 +428,7 @@ test('adds NuGet and native networking packages to their respective mixed Raylib
   assert.match(cmake, /target_link_libraries\(pw_native PRIVATE asio\)/);
   assert.match(cmake, /target_link_libraries\(asio INTERFACE ws2_32 mswsock\)/);
   assert.match(await fs.readFile(path.join(project, 'Program.cs'), 'utf8'), /position = NativeMotion\.Advance\(position, step,/);
-  assert.match(await fs.readFile(path.join(project, 'scripts/package-macos.sh'), 'utf8'), /--self-contained -o "\$app\/Contents\/MacOS"/);
+  assert.match(await fs.readFile(path.join(project, 'scripts/package-macos.sh'), 'utf8'), /--self-contained .* -o "\$app\/Contents\/MacOS"/);
 });
 
 test('configures the Emscripten target for both Raylib and basic CMake languages', async t => {
@@ -552,6 +552,46 @@ test('converts raster icons for desktop and mobile project scaffolds', async t =
         assert.equal((await sharp(png).metadata()).width, 256);
         if (id === 'electron') assert.match(await fs.readFile(path.join(project, 'forge.config.cjs'), 'utf8'), /packagerConfig:.*icon/);
       }
+    }
+  }
+});
+
+test('installs desktop icon assets for GUI and game starters', async t => {
+  const root = await fixture(t);
+  const image = path.join(root, 'icon.webp');
+  await require('sharp')({ create: { width: 32, height: 32, channels: 4, background: '#1289aaff' } }).webp().toFile(image);
+  const icons = await loadExecutableIcons([image]);
+  const templates = [...starters.filter(template => ['lua-love', 'unity', 'unreal', 'sfml-imgui-cpp', 'sdl2-cpp', 'cpp-lua-desktop'].includes(template.id)),
+    parseMonoGameTemplates('MonoGame DesktopGL  mgdesktopgl  [C#]  MonoGame')[0]];
+  for (const template of templates) {
+    const options = readProjectOptions(template, { executableIcon: true, ...(template.sfml ? { build: 'sfml2' } : {}) }, icons);
+    const name = template.shortName || template.id;
+    const project = await createProject(root, name, async (target, parent) => {
+      if (template.group === 'monogame') {
+        await fs.writeFile(path.join(target, 'Game.csproj'), '<Project><PropertyGroup><OutputType>WinExe</OutputType></PropertyGroup></Project>');
+      } else {
+        await writeStarter(template, name, target, parent, undefined, {}, options);
+      }
+      await applyProjectOptions(target, template, name, options, parent);
+    });
+    if (template.cmakeTarget) {
+      const code = await fs.readFile(path.join(project, 'src/main.cpp'), 'utf8');
+      assert.match(code, /#include "app_icon.h"/);
+      if (template.sfml) assert.match(code, /window\.setIcon\(48, 48, app_icon_pixels\)/);
+      continue;
+    }
+    assert.ok(await fs.stat(path.join(project, 'scripts/install-linux-icon.sh')));
+    if (template.group === 'monogame') {
+      assert.match(await fs.readFile(path.join(project, 'Game.csproj'), 'utf8'), /ApplicationIcon>Icon.ico/);
+      assert.equal((await fs.readFile(path.join(project, 'Icon.bmp'))).toString('ascii', 0, 2), 'BM');
+      assert.match(await fs.readFile(path.join(project, 'scripts/package-macos.sh'), 'utf8'), /CFBundleIconFile/);
+    } else if (template.id === 'unity') {
+      assert.match(await fs.readFile(path.join(project, 'Assets/Editor/ProjectWizardAppIcon.cs'), 'utf8'), /PlayerSettings\.SetIcons/);
+    } else if (template.id === 'unreal') {
+      assert.ok(await fs.stat(path.join(project, 'Build/Windows/Application.ico')));
+      assert.ok(await fs.stat(path.join(project, 'Build/Mac/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json')));
+    } else {
+      assert.match(await fs.readFile(path.join(project, 'conf.lua'), 'utf8'), /config\.window\.icon = 'assets\/app.png'/);
     }
   }
 });
@@ -702,20 +742,29 @@ test('scaffolds both SFML desktop projects and keeps the ImGui backend on one ve
   for (const [id, imgui] of [['sfml-cpp', false], ['sfml-imgui-cpp', true]]) {
     const template = starters.find(item => item.id === id);
     const tools = { 'cmake-3.28': {}, 'cpp-compiler': {}, git: {} };
-    assert.equal(templateAvailability(template, tools, 'win32').ready, true);
-    assert.deepEqual(templateAvailability(template, tools, 'linux').missing.map(tool => tool.id), ['sfml-desktop']);
+    const windows = projectOptions(template, tools, [], 'win32');
+    const linux = projectOptions(template, tools, [], 'linux');
+    assert.equal(windows.buildChoice.defaultId, 'sfml3');
+    assert.ok(windows.buildChoice.options.every(choice => choice.ready));
+    assert.deepEqual(linux.buildChoice.options.map(choice => choice.missing[0].id), ['sfml-desktop', 'sfml2-desktop']);
     assert.equal(projectOptions(template, tools).libraries.some(library => library.id === 'imgui'), !imgui);
-    const project = await createProject(root, id, async (target, parent) => {
-      await writeStarter(template, id, target, parent);
-      await applyProjectOptions(target, template, id, readProjectOptions(template, {}), parent);
-    });
-    const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
-    assert.match(cmake, /cmake_minimum_required\(VERSION 3\.28\)/);
-    assert.match(cmake, /MACOSX_BUNDLE TRUE/);
-    assert.match(cmake, /include\(cmake\/Distribution\.cmake\)/);
-    assert.equal(cmake.includes('ImGui-SFML::ImGui-SFML'), imgui);
-    const source = await fs.readFile(path.join(project, 'src/main.cpp'), 'utf8');
-    assert.match(source, imgui ? /ImGui::SliderFloat/ : /sf::Keyboard::isKeyPressed/);
+    for (const [build, version, backend, poll] of [['sfml2', '2.6.2', 'v2.6', 'pollEvent(event)'], ['sfml3', '3.1.0', 'v3.0', 'pollEvent()']]) {
+      const name = id + '-' + build;
+      const options = readProjectOptions(template, { build });
+      const project = await createProject(root, name, async (target, parent) => {
+        await writeStarter(template, name, target, parent, undefined, {}, options);
+        await applyProjectOptions(target, template, name, options, parent);
+      });
+      const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
+      assert.match(cmake, /MACOSX_BUNDLE TRUE/);
+      assert.match(cmake, /include\(cmake\/Distribution\.cmake\)/);
+      assert.equal(cmake.includes('ImGui-SFML::ImGui-SFML'), imgui);
+      if (imgui) assert.ok(cmake.includes('/' + backend));
+      assert.ok((await fs.readFile(path.join(project, 'cmake/SFML.cmake'), 'utf8')).includes('/' + version));
+      const source = await fs.readFile(path.join(project, 'src/main.cpp'), 'utf8');
+      assert.ok(source.includes(poll));
+      assert.match(source, imgui ? /ImGui::SliderFloat/ : /sf::Keyboard::isKeyPressed/);
+    }
   }
 });
 

@@ -401,7 +401,7 @@ function activate(context) {
       detected: Object.entries(detected).filter(([id, result]) =>
         !['vite-node', 'expo-node', 'react-native-node', 'next-node', 'nuxt-node', 'electron-node',
           'android-gradle', 'android-xr-gradle', 'compose-gradle', 'java-17', 'kmp-gradle',
-          'godot-rust', 'laravel-php', 'ml-python', 'cmake-3.28'].includes(id) && result)
+          'godot-rust', 'laravel-php', 'ml-python', 'cmake-3.28', 'sfml2-desktop'].includes(id) && result)
         .map(([id, result]) => ({ label: toolchains[id].label, ...result }))
         .sort((a, b) => a.label.localeCompare(b.label)),
       sdkVersion: sdk.version, sdkError: sdk.error, monoError, monoCount: mono.length,
@@ -427,7 +427,7 @@ function activate(context) {
       location: vscode.ProgressLocation.Notification, title: 'Creating project…'
     }, () => createProject(message.location, message.name, async (project, parent) => {
       if (template.kind === 'dotnet') await createDotnetProject(template, message.name, project, parent, log);
-      if (template.kind === 'starter') await writeStarter(template, message.name, project, parent, log, tools);
+      if (template.kind === 'starter') await writeStarter(template, message.name, project, parent, log, tools, options);
       if (template.kind === 'react-native') await createReactNativeProject(message.name, project, tools, log);
       if (template.kind === 'npm-generator') await createNpmProject(template, message.name, project, tools, log);
       if (template.kind === 'external-generator') await createExternalProject(template, message.name, project, tools, log);

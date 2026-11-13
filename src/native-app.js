@@ -7,12 +7,18 @@ function mobileIconTemplate(template) {
   return template.group === 'mobile' || template.androidCmake || template.id === 'kotlin-android-xr';
 }
 
+function desktopMonoGame(template) {
+  return template.group === 'monogame' && /^(?:mgdesktop(?:gl|vk)|mgwindowsdx(?:12)?)$/i.test(template.shortName);
+}
+
 function executableIconFormats(template) {
   if (!template) return [];
   if (mobileIconTemplate(template)) return ['.png', '.webp'];
   if (template.id === 'flutter-desktop') return ['.png', '.webp', '.ico'];
+  if (template.id === 'unity') return ['.png', '.webp'];
+  if (desktopMonoGame(template) && /^mgwindows/i.test(template.shortName)) return ['.png', '.webp', '.ico'];
   const desktop = template.group === 'desktop' || template.sdlBackend || (template.group === 'raylib' && template.language === 'C#') ||
-    template.id === 'godot' || template.id.startsWith('godot-native-');
+    template.group === 'games' || template.id === 'lua-love' || desktopMonoGame(template);
   if (!(template.cmakeTarget && !template.cmakeLibrary) && !desktop) return [];
   return ['.png', '.webp', ...[['win32', '.ico'], ['darwin', '.icns']].filter(([platform]) =>
     !template.platforms || template.platforms.includes(platform)).map(([, extension]) => extension)];
@@ -94,13 +100,14 @@ async function configureNativeApp(project, template, name, options) {
   }
   if (linuxIcon) {
     const id = 'app-' + replaceTokens('__PROJECT_SLUG__', name);
+    const iconName = ['gtk-c', 'gtk-cpp'].includes(template.id) ? 'com.example.' + id : id;
     await fs.writeFile(path.join(project, 'assets', id + '.desktop'),
-      '[Desktop Entry]\nType=Application\nName=' + name + '\nExec=' + id + '\nIcon=' + id +
+      '[Desktop Entry]\nType=Application\nName=' + name + '\nExec=' + id + '\nIcon=' + iconName +
       '\nTerminal=' + (template.group === 'cli' ? 'true' : 'false') + '\n', { flag: 'wx' });
     cmake.push('if(CMAKE_SYSTEM_NAME STREQUAL "Linux")',
       `    install(PROGRAMS "$<TARGET_FILE:${target}>" DESTINATION bin RENAME ${id})`,
-      `    install(FILES assets/app.png DESTINATION share/icons/hicolor/256x256/apps RENAME ${id}.png)`,
-      `    install(FILES assets/${id}.desktop DESTINATION share/applications)`, 'endif()', '');
+      `    install(FILES assets/app.png DESTINATION share/icons/hicolor/256x256/apps RENAME ${iconName}.png)`,
+      `    install(FILES assets/${id}.desktop DESTINATION share/applications RENAME ${iconName}.desktop)`, 'endif()', '');
     notes.push('On Linux, run `cmake --install build --prefix "$HOME/.local"` to install the app and its desktop entry. Ensure `$HOME/.local/bin` is on PATH.');
   }
   if (macBundle) {
@@ -127,4 +134,4 @@ async function configureNativeApp(project, template, name, options) {
   }
 }
 
-module.exports = { configureNativeApp, executableIconFormats, loadExecutableIcons, mobileIconTemplate };
+module.exports = { configureNativeApp, desktopMonoGame, executableIconFormats, loadExecutableIcons, mobileIconTemplate };

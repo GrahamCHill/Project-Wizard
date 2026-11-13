@@ -6,12 +6,11 @@ const { generators } = require('./npm-generators');
 const { externalGenerators } = require('./external-generators');
 const { sdlMixedStarters, pluginStarters } = require('./mixed-starters');
 const { systemsStarters } = require('./systems-starters');
+const { renderSfml } = require('./sfml');
 
 const sfmlStarter = {
   group: 'graphics', kind: 'starter', language: 'C++', cmakeTarget: 'app',
-  platforms: ['win32', 'darwin', 'linux'], tools: ['cmake-3.28', 'cpp-compiler', 'git'],
-  platformTools: { linux: ['sfml-desktop'] },
-  requirement: 'CMake 3.28+, a C++17 compiler, Git, and SFML’s desktop development dependencies on Linux.',
+  platforms: ['win32', 'darwin', 'linux'], sfml: true,
   next: 'Build and run the sample using README.md.',
   files: ['CMakeLists.txt', 'src/main.cpp', 'README.md'],
   sharedFiles: { 'sfml/SFML.cmake': 'cmake/SFML.cmake', 'sfml/gitignore': '.gitignore' }
@@ -72,11 +71,11 @@ const starters = [
   ...sdlMixedStarters,
   {
     ...sfmlStarter, id: 'sfml-cpp', label: 'SFML',
-    description: 'A resizable SFML 3 window with a shape you can move with the arrow keys.'
+    description: 'A resizable SFML window with a shape you can move with the arrow keys.'
   },
   {
     ...sfmlStarter, id: 'sfml-imgui-cpp', label: 'SFML + Dear ImGui',
-    description: 'An SFML 3 scene with a Dear ImGui panel for changing the shape’s size and color.'
+    description: 'An SFML scene with a Dear ImGui panel for changing the shape’s size and color.'
   },
   ...pluginStarters,
   ...systemsStarters,
@@ -89,12 +88,12 @@ const starters = [
   }
 ];
 
-async function writeStarter(template, name, project, parent, log, tools = {}) {
+async function writeStarter(template, name, project, parent, log, tools = {}, options = {}) {
   const sdk = template.needsSdk ? await getSdk(parent, log) : undefined;
   const templateRoot = path.join(__dirname, '..', 'templates', template.sourceDirectory || template.id);
   const cpp = template.language === 'C++';
   const moduleName = 'Game' + name.replace(/[^A-Za-z0-9]/g, '').slice(0, 48);
-  const renderTokens = text => replaceTokens(text, name, sdk?.major)
+  const renderTokens = text => replaceTokens(template.sfml ? renderSfml(text, options.build) : text, name, sdk?.major)
     .replaceAll('__UNITY_VERSION__', tools['unity-editor']?.editorVersion || '6000.3.0f1')
     .replaceAll('__UNREAL_ASSOCIATION__', tools['unreal-editor']?.association || '')
     .replaceAll('__UNREAL_MODULE__', moduleName)

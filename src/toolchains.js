@@ -285,6 +285,10 @@ const toolchains = {
     label: 'SFML desktop development files', url: 'https://www.sfml-dev.org/tutorials/3.1/getting-started/cmake/#requirements',
     instructions: 'Install pkg-config and the X11, Xrandr, Xcursor, Xi, udev, OpenGL, FreeType, and HarfBuzz development packages. The generated README includes the Debian and Ubuntu command.'
   },
+  'sfml2-desktop': {
+    label: 'SFML 2 desktop development files', url: 'https://www.sfml-dev.org/tutorials/2.6/start-cmake.php',
+    instructions: 'Install pkg-config and the X11, Xrandr, Xcursor, udev, OpenGL, and FreeType development packages. The generated README includes the Debian and Ubuntu command.'
+  },
   nasm: {
     label: 'NASM', url: 'https://www.nasm.us/',
     instructions: 'Install NASM and add it to PATH. On Linux, use your distribution’s nasm package.',
@@ -804,9 +808,9 @@ async function detectToolchains(settings = system) {
     const required = await Promise.all([compilerName, 'ninja', 'cmake'].map(name => candidates([name], [tools], platform)));
     return required.every(files => files.length) ? kit : undefined;
   };
-  const [[wx, gtk, x11, wayland, gl], sfmlDependencies, gtk4, gtkmm, webkit, ssl, webView, editors, supplemental] = await Promise.all([
+  const [[wx, gtk, x11, wayland, gl], [xrandr, xcursor, udev, freetype, xi, harfbuzz], gtk4, gtkmm, webkit, ssl, webView, editors, supplemental] = await Promise.all([
     linuxGraphics,
-    platform === 'linux' ? Promise.all(['xrandr', 'xcursor', 'xi', 'libudev', 'freetype2', 'harfbuzz'].map(pkgConfig)) : [],
+    platform === 'linux' ? Promise.all(['xrandr', 'xcursor', 'libudev', 'freetype2', 'xi', 'harfbuzz'].map(pkgConfig)) : [],
     gtkKit('gtk4', 'gcc'), gtkKit('gtkmm-4.0', 'g++'),
     platform === 'linux' ? pkgConfig('webkit2gtk-4.1') : undefined,
     platform === 'linux' ? pkgConfig('openssl') : undefined,
@@ -814,6 +818,7 @@ async function detectToolchains(settings = system) {
     findGameEditors(settings, probe),
     findSupplementalTools(settings, probe, directories, appleSdk)
   ]);
+  const sfml = x11 && gl && xrandr && xcursor && udev && freetype ? { version: 'X11 / OpenGL', file: x11.file } : undefined;
   const results = {
     git,
     python, uv, conda, virtualenv: virtualenv || virtualenvRuntime && { version: 'Python module', file: virtualenvRuntime.file },
@@ -859,7 +864,8 @@ async function detectToolchains(settings = system) {
     'cpp-compiler': systemCompiler || cpp,
     'wx-gtk': wx || gtk,
     'sdl-desktop': x11 || wayland,
-    'sfml-desktop': x11 && gl && sfmlDependencies.every(Boolean) ? { version: 'X11 / OpenGL', file: x11.file } : undefined,
+    'sfml-desktop': xi && harfbuzz ? sfml : undefined,
+    'sfml2-desktop': sfml,
     'opengl-dev': gl,
     'vulkan-dev': requireVersion(vulkanSdk || (!windows ? await pkgConfig('vulkan') : undefined), 1, 3, 216),
     cuda,

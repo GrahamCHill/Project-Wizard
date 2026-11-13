@@ -7,16 +7,16 @@ project(__PROJECT_IDENTIFIER__ LANGUAGES CXX)
 include(cmake/SFML.cmake)
 
 FetchContent_Declare(imgui
-    URL https://codeload.github.com/ocornut/imgui/tar.gz/refs/tags/v1.91.9b
-    URL_HASH SHA256=8e1bbc76c71d74fef2fb85db7e7ca8eba13d6a86623c54992b60162db554ffdb
+    URL https://codeload.github.com/ocornut/imgui/tar.gz/refs/tags/v__SFML_DEAR_IMGUI_VERSION__
+    URL_HASH SHA256=__SFML_DEAR_IMGUI_HASH__
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(imgui)
 set(IMGUI_DIR "${imgui_SOURCE_DIR}")
 set(IMGUI_SFML_FIND_SFML OFF)
 FetchContent_Declare(imgui-sfml
-    URL https://codeload.github.com/SFML/imgui-sfml/tar.gz/refs/tags/v3.0
-    URL_HASH SHA256=561a04407dcc913b8f1c25a164ad4907852b51fb4f11907d1ab9db6351af911b
+    URL https://codeload.github.com/SFML/imgui-sfml/tar.gz/refs/tags/v__SFML_IMGUI_VERSION__
+    URL_HASH SHA256=__SFML_IMGUI_HASH__
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     EXCLUDE_FROM_ALL
 )

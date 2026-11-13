@@ -1,6 +1,10 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { replaceTokens } = require('./projects');
+const { bmp } = require('./icon-data');
+const { desktopMonoGame } = require('./native-app');
+
+const desktopTemplates = path.join(__dirname, '..', 'templates', '_shared', 'desktop');
 
 async function updateFile(project, relative, change) {
   const file = path.join(project, relative);
@@ -22,6 +26,17 @@ function appendReadme(project, text) {
 
 function appendDistribution(project, text) {
   return fs.appendFile(path.join(project, 'README.md'), '\n## Distribution\n\n' + text + '\n');
+}
+
+async function linuxLauncher(project, name, example) {
+  const scripts = path.join(project, 'scripts');
+  await fs.mkdir(scripts, { recursive: true });
+  const source = await fs.readFile(path.join(desktopTemplates, 'install-linux-icon.sh'), 'utf8');
+  await fs.writeFile(path.join(scripts, 'install-linux-icon.sh'), replaceTokens(source.replaceAll('\r\n', '\n'), name), { flag: 'wx' });
+  const command = example || '"path/to/packaged-executable"';
+  await fs.appendFile(path.join(project, 'README.md'), '\n### Linux launcher icon\n\n' +
+    'From the project folder, register the app in your desktop menu after placing the executable in its final location.\n\n' +
+    `~~~sh\nsh scripts/install-linux-icon.sh ${command}\n~~~\n`);
 }
 
 async function tauriIcons(project, icons, raster) {
@@ -181,19 +196,19 @@ async function jvmIcons(project, template, name, options, icons) {
     build + '\n~~~\n\n' + (icons.size ? commands.join('\n\n') : `~~~sh\n${packageCommand}\n~~~`));
 }
 
-async function macBundle(project, template, name, icon) {
+async function macBundle(project, template, name, icon, manifest) {
   const folder = path.join(project, 'scripts');
   await fs.mkdir(folder, { recursive: true });
   const slug = replaceTokens('__PROJECT_SLUG__', name);
   const dotnet = template.language === 'C#';
-  const executable = dotnet ? name : 'App';
+  const executable = dotnet ? 'ProjectWizardApp' : 'App';
   const commands = dotnet ? [
     'case "$(uname -m)" in',
     '    arm64) runtime=osx-arm64 ;;',
     '    x86_64) runtime=osx-x64 ;;',
     '    *) echo "Unsupported architecture"; exit 1 ;;',
     'esac',
-    'dotnet publish -c Release -r "$runtime" --self-contained -o "$app/Contents/MacOS"'
+    `dotnet publish ${manifest ? `"${manifest.split(path.sep).join('/')}" ` : ''}-c Release -r "$runtime" --self-contained -p:AssemblyName=${executable} -o "$app/Contents/MacOS"`
   ] : template.id === 'swift-desktop' ? [
     'swift build -c release',
     'cp "$(swift build -c release --show-bin-path)/App" "$app/Contents/MacOS/App"'
@@ -217,7 +232,8 @@ async function macBundle(project, template, name, icon) {
     'mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"', ...commands,
     ...(icon ? ['cp assets/app.icns "$app/Contents/Resources/app.icns"'] : []),
     'cat > "$app/Contents/Info.plist" <<\'PLIST\'', ...plist, 'PLIST',
-    ...(template.sdlBackend ? ['cmake "-DAPP_BUNDLE=$PWD/$app" -P native/cmake/FixBundle.cmake'] : []), ''
+    ...(template.sdlBackend ? ['cmake "-DAPP_BUNDLE=$PWD/$app" -P native/cmake/FixBundle.cmake'] :
+      ['codesign --force --deep --sign - "$app"']), ''
   ];
   await fs.writeFile(path.join(folder, 'package-macos.sh'), script.join('\n'), { flag: 'wx' });
   await fs.appendFile(path.join(project, '.gitignore'), '\n/packaged/\n');
@@ -234,7 +250,7 @@ async function dotnetIcons(project, template, name, icons) {
     const manifest = (await fs.readdir(project)).find(file => file.endsWith('.csproj'));
     if (!manifest) throw new Error('The .NET starter did not generate a .csproj file.');
     await updateFile(project, manifest, source => source.replace('</Project>', [
-      ...(ico ? ['  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform(\'Windows\'))">', '    <ApplicationIcon>assets/app.ico</ApplicationIcon>', '  </PropertyGroup>'] : []),
+      ...(ico ? ['  <PropertyGroup>', '    <ApplicationIcon>assets/app.ico</ApplicationIcon>', '  </PropertyGroup>'] : []),
       ...(png ? ['  <ItemGroup>',
         '    <None Update="assets/app.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />',
         '  </ItemGroup>'] : []),
@@ -267,11 +283,112 @@ async function dotnetIcons(project, template, name, icons) {
   if (ico) await appendReadme(project, 'The Windows app host embeds `assets/app.ico` when built with `dotnet build` or `dotnet publish`.');
 }
 
+async function monoGameIcons(project, template, name, icons, raster) {
+  const ico = icons.get('.ico');
+  const bitmap = raster && await bmp(raster, 64);
+  const manifests = await fs.readdir(project, { recursive: true });
+  const hosts = [];
+  for (const manifest of manifests.filter(file => /\.(?:csproj|fsproj)$/i.test(file))) {
+    const folder = path.join(project, path.dirname(manifest));
+    const contents = await fs.readFile(path.join(project, manifest), 'utf8');
+    if (!/<OutputType>\s*(?:WinExe|Exe)\s*<\/OutputType>/i.test(contents)) continue;
+    hosts.push(manifest);
+    for (const [file, data] of [['Icon.ico', ico?.data], ['Icon.bmp', bitmap]]) {
+      if (!data) continue;
+      await fs.writeFile(path.join(folder, file), data);
+    }
+    const additions = [];
+    if (ico && !/<ApplicationIcon>/i.test(contents)) additions.push('  <PropertyGroup><ApplicationIcon>Icon.ico</ApplicationIcon></PropertyGroup>');
+    if (bitmap && !/<EmbeddedResource\b[^>]*\bInclude=["']Icon\.bmp["']/i.test(contents)) {
+      additions.push('  <ItemGroup><EmbeddedResource Include="Icon.bmp" LogicalName="Icon.bmp" /></ItemGroup>');
+    }
+    if (additions.length) await fs.writeFile(path.join(project, manifest), contents.replace('</Project>', additions.join('\n') + '\n</Project>'));
+  }
+  const crossPlatform = !/^mgwindows/i.test(template.shortName);
+  if (crossPlatform && icons.has('.icns')) {
+    if (hosts.length === 1) await macBundle(project, template, name, true, hosts[0]);
+  }
+  if (crossPlatform && bitmap) await linuxLauncher(project, name);
+  await appendReadme(project, 'The desktop MonoGame template uses the generated `Icon.ico` for the Windows executable and `Icon.bmp` for the window when supplied.');
+}
+
+async function gameEngineIcons(project, template, name, icons, raster) {
+  if (template.id === 'lua-love') {
+    if (icons.has('.png')) {
+      await updateFile(project, 'conf.lua', source => source.replace('    config.window.width',
+        "    config.window.icon = 'assets/app.png'\n    config.window.width"));
+      await linuxLauncher(project, name, '"$(command -v love)" "$PWD"');
+    }
+    await appendReadme(project, 'The PNG is used by the game window. For a fused Windows executable or a macOS app bundle, use the generated native icons with the [LÖVE packaging instructions](https://love2d.org/wiki/Game_Distribution).');
+    return;
+  }
+  if (template.id === 'unity') {
+    const art = path.join(project, 'Assets/Game/Art');
+    const editor = path.join(project, 'Assets/Editor');
+    await fs.mkdir(art, { recursive: true });
+    await fs.mkdir(editor, { recursive: true });
+    await fs.writeFile(path.join(art, 'AppIcon.png'), await raster.png(512));
+    await fs.copyFile(path.join(desktopTemplates, 'UnityAppIcon.cs'), path.join(editor, 'ProjectWizardAppIcon.cs'));
+    await appendReadme(project, 'Unity applies the imported texture to Standalone Player Settings. To reapply it, use **Tools → Project Wizard → Apply App Icon** in the editor.');
+  } else {
+    for (const [format, platform] of [['.ico', 'Windows'], ['.icns', 'Mac']]) {
+      if (!icons.has(format)) continue;
+      const folder = path.join(project, 'Build', platform);
+      await fs.mkdir(folder, { recursive: true });
+      await fs.writeFile(path.join(folder, 'Application' + format), icons.get(format).data);
+    }
+    if (raster) await unrealMacIcon(project, raster);
+    await appendReadme(project, 'Unreal uses the icons under `Build/` when packaging. The PNG or WebP option also supplies the macOS Xcode app icon asset catalog.');
+  }
+  if (icons.has('.png')) await linuxLauncher(project, name);
+}
+
+async function unrealMacIcon(project, raster) {
+  const catalog = path.join(project, 'Build/Mac/Resources/Assets.xcassets');
+  const appIcon = path.join(catalog, 'AppIcon.appiconset');
+  await fs.mkdir(appIcon, { recursive: true });
+  const info = { version: 1, author: 'xcode' };
+  const images = [];
+  for (const size of [16, 32, 128, 256, 512]) {
+    for (const scale of [1, 2]) {
+      const filename = `icon-${size}@${scale}x.png`;
+      await fs.writeFile(path.join(appIcon, filename), await raster.png(size * scale));
+      images.push({ filename, idiom: 'mac', size: `${size}x${size}`, scale: `${scale}x` });
+    }
+  }
+  await fs.writeFile(path.join(catalog, 'Contents.json'), JSON.stringify({ info }, null, 2) + '\n');
+  await fs.writeFile(path.join(appIcon, 'Contents.json'), JSON.stringify({ images, info }, null, 2) + '\n');
+}
+
 async function configureDesktopApp(project, template, name, options, icons, raster) {
-  if (template.id === 'tauri') return icons.size ? tauriIcons(project, icons, raster) : undefined;
-  if (template.id === 'flutter-desktop') return icons.size ? flutterDesktopIcons(project, icons, raster) : undefined;
+  if (template.id === 'tauri') {
+    if (!icons.size) return;
+    await tauriIcons(project, icons, raster);
+    if (raster) {
+      await saveAssets(project, icons);
+      await linuxLauncher(project, name);
+    }
+    return;
+  }
+  if (template.id === 'flutter-desktop') {
+    if (!icons.size) return;
+    await flutterDesktopIcons(project, icons, raster);
+    if (raster) {
+      await saveAssets(project, icons);
+      await linuxLauncher(project, name);
+    }
+    return;
+  }
   if (icons.size) await saveAssets(project, icons);
+  if (desktopMonoGame(template)) return icons.size ? monoGameIcons(project, template, name, icons, raster) : undefined;
+  if (['lua-love', 'unity', 'unreal'].includes(template.id)) {
+    return icons.size ? gameEngineIcons(project, template, name, icons, raster) : undefined;
+  }
+  if (icons.has('.png') && (!template.platforms || template.platforms.includes('linux'))) {
+    await linuxLauncher(project, name, template.group === 'raylib' ? `"dist/${name}"` : undefined);
+  }
   if (template.id === 'godot' || template.id.startsWith('godot-native-')) {
+    if (!icons.size) return;
     const settings = [['.png', 'icon'], ['.ico', 'windows_native_icon'], ['.icns', 'macos_native_icon']]
       .filter(([extension]) => icons.has(extension))
       .map(([extension, key]) => 'config/' + key + '="res://assets/app' + extension + '"');

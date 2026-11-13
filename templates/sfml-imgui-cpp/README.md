@@ -1,11 +1,11 @@
 # __PROJECT_NAME__
 
-Use the **Circle controls** panel to change the size and color of the SFML shape. The sample uses SFML 3.1 and ImGui-SFML 3.0 with Dear ImGui 1.91.9b. The build pins these versions together for backend compatibility.
+Use the **Circle controls** panel to change the size and color of the SFML shape. The sample uses SFML __SFML_VERSION__ and ImGui-SFML __SFML_IMGUI_VERSION__ with Dear ImGui __SFML_DEAR_IMGUI_VERSION__. The build pins these versions together for backend compatibility.
 
-Use CMake 3.28+, a C++17 compiler, and Git. CMake fetches the libraries on the first configuration. On Debian or Ubuntu, install the graphics development packages before configuring.
+Use CMake 3.28+, and a C++17 compiler__SFML_GIT_REQUIREMENT__. CMake fetches the libraries on the first configuration. On Debian or Ubuntu, install the graphics development packages before configuring.
 
 ~~~sh
-sudo apt install pkg-config libx11-dev libxrandr-dev libxcursor-dev libxi-dev libudev-dev libgl1-mesa-dev libfreetype-dev libharfbuzz-dev
+sudo apt install pkg-config libx11-dev libxrandr-dev libxcursor-dev libudev-dev libgl1-mesa-dev libfreetype-dev__SFML_LINUX_EXTRA__
 ~~~
 
 ~~~sh

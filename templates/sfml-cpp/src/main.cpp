@@ -2,7 +2,7 @@
 
 int main()
 {
-    sf::RenderWindow window(sf::VideoMode({800, 500}), "__PROJECT_NAME__");
+    sf::RenderWindow window(__SFML_WINDOW_MODE__, "__PROJECT_NAME__");
     window.setFramerateLimit(60);
 
     sf::CircleShape player(28.f);
@@ -12,8 +12,8 @@ int main()
     sf::Clock clock;
 
     while (window.isOpen()) {
-        while (const auto event = window.pollEvent()) {
-            if (event->is<sf::Event::Closed>()) {
+        __SFML_POLL_EVENT__ {
+            if (__SFML_CLOSED__) {
                 window.close();
                 break;
             }
@@ -22,7 +22,7 @@ int main()
 
         const float step = 220.f * clock.restart().asSeconds();
         if (window.hasFocus()) {
-            using Key = sf::Keyboard::Key;
+            using Key = __SFML_KEY__;
             const int x = sf::Keyboard::isKeyPressed(Key::Right) - sf::Keyboard::isKeyPressed(Key::Left);
             const int y = sf::Keyboard::isKeyPressed(Key::Down) - sf::Keyboard::isKeyPressed(Key::Up);
             player.move({x * step, y * step});

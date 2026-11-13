@@ -7,7 +7,7 @@
 
 int main()
 {
-    sf::RenderWindow window(sf::VideoMode({800, 500}), "__PROJECT_NAME__");
+    sf::RenderWindow window(__SFML_WINDOW_MODE__, "__PROJECT_NAME__");
     window.setFramerateLimit(60);
     if (!ImGui::SFML::Init(window)) {
         std::cerr << "Could not initialize ImGui-SFML.\n";
@@ -21,9 +21,9 @@ int main()
     float color[] = {0.37f, 0.82f, 0.75f};
 
     while (window.isOpen()) {
-        while (const auto event = window.pollEvent()) {
-            ImGui::SFML::ProcessEvent(window, *event);
-            if (event->is<sf::Event::Closed>()) {
+        __SFML_POLL_EVENT__ {
+            ImGui::SFML::ProcessEvent(window, __SFML_EVENT_VALUE__);
+            if (__SFML_CLOSED__) {
                 window.close();
                 break;
             }

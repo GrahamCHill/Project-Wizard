@@ -8,9 +8,11 @@ const { replaceTokens } = require('./projects');
 const { configureJava, parseJavaDependencies } = require('./java-options');
 const { configureNativeApp, executableIconFormats, mobileIconTemplate } = require('./native-app');
 const { configureNativeDistribution } = require('./native-distribution');
+const { configureNativeWindowIcon } = require('./native-window-icons');
 const { iconVariants } = require('./icon-data');
 const { configureDesktopApp } = require('./desktop-icons');
 const { configureMobileIcons } = require('./mobile-icons');
+const { sfmlVersions } = require('./sfml');
 const { templateAvailability } = require('./toolchains');
 
 const npmTemplates = ['javascript-frontend', 'javascript-server', 'typescript-frontend', 'expo-mobile', 'electron'];
@@ -83,6 +85,7 @@ function buildOptions(template, tools, versions, platform, manager) {
   if (template.kind !== 'starter') return;
   if (template.cmakeTarget) {
     return { type: 'cmake', libraries: cmakeChoices(template), libraryLabel: 'Common CMake libraries',
+      buildChoice: template.sfml ? buildChoice('SFML version', sfmlVersions, tools, platform, manager) : undefined,
       dependencies: 'Additional CMake archives', example: 'name target https://example.com/library.tar.gz [sha256]',
       dependencyHint: 'Choose a preset to include a runnable example, or enter a custom archive. Use one line per dependency.',
       targetChoice: template.webTarget ? buildChoice('Target platforms', [
@@ -266,6 +269,9 @@ async function applyProjectOptions(project, template, name, options, parent, log
   if (raster && !mobile) outputs.set('.png', { data: await raster.png(256) });
   await applyBuildOptions(project, template, name, { ...options, icons: outputs }, parent, log);
   if (mobile) return configureMobileIcons(project, template, name, raster);
+  if (raster && options.type === 'cmake' && !template.cmakeLibrary) {
+    await configureNativeWindowIcon(project, template, options.build, raster);
+  }
   if (options.type !== 'cmake' || template.cmakeLibrary) return configureDesktopApp(project, template, name, options, outputs, raster);
 }
 

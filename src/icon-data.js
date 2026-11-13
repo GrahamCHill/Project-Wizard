@@ -94,6 +94,31 @@ async function ico(raster) {
   return Buffer.concat([entries, ...images], offset);
 }
 
+async function bmp(raster, size) {
+  const rgba = await raster.rgba(size);
+  const rowBytes = 4 * Math.ceil(size * 3 / 4);
+  const data = Buffer.alloc(54 + rowBytes * size);
+  data.write('BM');
+  data.writeUInt32LE(data.length, 2);
+  data.writeUInt32LE(54, 10);
+  data.writeUInt32LE(40, 14);
+  data.writeInt32LE(size, 18);
+  data.writeInt32LE(size, 22);
+  data.writeUInt16LE(1, 26);
+  data.writeUInt16LE(24, 28);
+  for (let row = 0; row < size; row++) {
+    for (let x = 0; x < size; x++) {
+      const source = ((size - row - 1) * size + x) * 4;
+      const destination = 54 + row * rowBytes + x * 3;
+      const alpha = rgba[source + 3] / 255;
+      for (let channel = 0; channel < 3; channel++) {
+        data[destination + channel] = Math.round(rgba[source + 2 - channel] * alpha);
+      }
+    }
+  }
+  return data;
+}
+
 async function icns(raster) {
   const sizes = { icp4: 16, icp5: 32, icp6: 64, ic07: 128, ic08: 256, ic09: 512, ic10: 1024,
     ic11: 32, ic12: 64, ic13: 256, ic14: 512 };
@@ -121,4 +146,4 @@ async function iconVariants(icons, formats) {
   return { outputs, raster };
 }
 
-module.exports = { iconVariants, validateRaster };
+module.exports = { bmp, iconVariants, validateRaster };

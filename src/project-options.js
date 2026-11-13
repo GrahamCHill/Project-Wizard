@@ -61,7 +61,7 @@ function cmakeChoices(template) {
 }
 
 function nativeOptionsTemplate(template) {
-  if (template.nativeTarget) return { id: template.id, language: 'C++', cmakeTarget: template.nativeTarget };
+  if (template.nativeTarget) return { id: template.id, language: 'C++', cmakeTarget: template.nativeTarget, sdlBackend: template.sdlBackend };
 }
 
 function buildOptions(template, tools, versions, platform, manager) {
@@ -256,7 +256,7 @@ async function applyProjectOptions(project, template, name, options, parent, log
   if (!options) return;
   if (!options.icons) {
     await applyBuildOptions(project, template, name, options, parent, log);
-    if (options.type !== 'cmake' && (template.group === 'desktop' || (template.group === 'raylib' && template.language === 'C#'))) {
+    if (options.type !== 'cmake' && (template.group === 'desktop' || template.sdlBackend || (template.group === 'raylib' && template.language === 'C#'))) {
       await configureDesktopApp(project, template, name, options, new Map());
     }
     return;
@@ -284,9 +284,14 @@ async function applyBuildOptions(project, template, name, options, parent, log) 
     const native = nativeOptionsTemplate(template);
     if (native) await writeCmakeOptions(path.join(project, 'native'), native, options.nativePackages);
     if (options.framework) {
-      await addDotnetTests(project, parent, options.framework, log, native && {
-        call: 'NativeMotion.Advance(94, 10, 100)', expected: 4
-      });
+      const subject = template.sdlBackend ? {
+        name: 'RunsLuaBehaviorThroughCpp', call: 'NativeScene.ScriptedPosition("function update(p, t) return (p + 3 * t) % 100 end", 95, 2)',
+        expected: 1, note: 'The test calls Lua through the same native bridge used by the app.'
+      } : native && {
+        name: 'WrapsPositionInCpp', call: 'NativeMotion.Advance(94, 10, 100)', expected: 4,
+        note: 'The test calls the same C++ function that moves the circle in the app.'
+      };
+      await addDotnetTests(project, parent, options.framework, log, subject);
     }
     return;
   }

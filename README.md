@@ -47,7 +47,7 @@ LaTeX templates are off by default. Select **Enable LaTeX templates** and save t
 | Command line | C and C++ with CMake, CUDA kernel and library, Dart, Python, Ruby, PHP, Lua, Rust, Go, Swift, Java, Kotlin/JVM, Zig, and .NET |
 | Desktop | Qt, wxWidgets, GTK, GTKmm, and C++ + Lua with CMake, plus Flutter, Tauri, Electron, Python Tkinter, Java and Kotlin Swing, macOS SwiftUI and AppKit, and Windows Forms |
 | Mobile | React Native with Expo or the Community CLI, Android Jetpack Compose, iOS SwiftUI, and Flutter for Android and iOS |
-| Graphics | SDL2 and SDL3 with a choice of SDL 2D, OpenGL 3.3, or Vulkan in C and C++, plus LÖVE for Lua |
+| Graphics | SDL2 and SDL3 in C and C++, mixed C# + C++ + Lua SDL3 with Vulkan, OpenGL, or DirectX 11, and LÖVE for Lua |
 | Web frontend | Flutter Web, Next.js, Nuxt, static HTML/CSS/JavaScript, and TypeScript with Vite |
 | Web server | Dart JSON API, FastAPI, Django, and Flask for Python, Ruby with Sinatra, PHP and Laravel + Vue, Rust with Axum, Go, Java, Kotlin/JVM, Node.js, and ASP.NET Core |
 | Games | MonoGame, Raylib for C, C++, or C#, and a mixed C++ and C# Raylib app |
@@ -79,6 +79,12 @@ The standalone Dart starters support the Dart SDK or the Dart SDK bundled with F
 Under **Game Engines**, Unity includes a demo scene with a rotating cube and dedicated scripts, scenes, art, audio, and prefab folders. Unreal includes a C++ game module, game and editor targets, organized content folders, and a spinning actor to place in a level. Godot includes a runnable 2D scene with arrow-key movement and a reusable player scene. Clear **Ready to use** to create a starter before installing its editor. For custom editor locations, set `UNITY_EDITOR_PATH`, `UNREAL_ENGINE_ROOT`, or `GODOT_PATH` as shown in the wizard’s setup guides. [Unity Editor installation](https://docs.unity.com/en-us/hub/add-editor) · [Unreal directory structure](https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-directory-structure) · [Godot project organization](https://docs.godotengine.org/en/stable/tutorials/best_practices/project_organization.html)
 
 In **Graphics**, choose your SDL version, graphics API, and language from the template names. The Vulkan starters clear and present a Vulkan swapchain and rebuild it on resize. Use a Vulkan 1.1 runtime and development files 1.3.216 or newer. On macOS, use the Vulkan SDK with MoltenVK. If a template needs setup, clear **Ready to use** to see the guide. [Vulkan SDK downloads](https://vulkan.lunarg.com/sdk/home)
+
+The mixed SDL3 starters put the app loop and state in C#, SDL rendering in C++, and reloadable behavior in Lua. Choose Vulkan, OpenGL, or Windows-only DirectX 11 in **Graphics**. `dotnet run` builds the native bridge and launches the example. Press **R** to reload the Lua script while the window is open. The generated README covers self-contained publishing and macOS app bundles. [SDL renderer selection](https://wiki.libsdl.org/SDL3/SDL_CreateRenderer)
+
+The **C++ Plugin Host**, **C++ Plugin Host + Lua**, and **C# Plugin Host + Lua** starters scan a `plugins/` folder next to the executable at launch. The pure C++ starter builds with a C++ compiler and CMake and includes a native sample plugin with a versioned C ABI. The Lua variants also include a sample script. The C# host uses a shared `IPlugin` contract and a separate assembly load context per plugin.
+
+GTK, GTKmm, and wxWidgets desktop starters include an Increment and Reset counter example. Follow the `clicked` handlers in GTK, `signal_clicked().connect()` in GTKmm, or `Bind(wxEVT_BUTTON, ...)` in wxWidgets to see how both buttons update the same label.
 
 MonoGame and built-in .NET generators require an active .NET SDK 8 or newer. Use **MonoGame → Install MonoGame templates** if the project templates are missing.
 

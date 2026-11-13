@@ -1,0 +1,27 @@
+<Project>
+  <Target Name="FindWindowsCMake" Condition="'$(CMakeExecutable)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">
+    <PropertyGroup>
+      <VsWhere>$(MSBuildProgramFiles32)/Microsoft Visual Studio/Installer/vswhere.exe</VsWhere>
+    </PropertyGroup>
+    <Exec Command="where.exe cmake.exe &gt;nul 2&gt;&amp;1" IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="CMakePathProbeExitCode" />
+    </Exec>
+    <Exec Condition="'$(CMakePathProbeExitCode)' != '0' and Exists('$(VsWhere)')"
+          Command="&quot;$(VsWhere)&quot; -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath"
+          ConsoleToMSBuild="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="VisualStudioInstallation" />
+    </Exec>
+    <PropertyGroup Condition="'$(VisualStudioInstallation)' != ''">
+      <BundledCMake>$(VisualStudioInstallation)/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe</BundledCMake>
+      <CMakeExecutable Condition="Exists('$(BundledCMake)')">$(BundledCMake)</CMakeExecutable>
+    </PropertyGroup>
+  </Target>
+  <Target Name="BuildNativeLibrary" BeforeTargets="PrepareForBuild" DependsOnTargets="FindWindowsCMake"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <CMakeExecutable Condition="'$(CMakeExecutable)' == ''">cmake</CMakeExecutable>
+    </PropertyGroup>
+    <Exec Command="&quot;$(CMakeExecutable)&quot; -S &quot;$(MSBuildProjectDirectory)/native&quot; -B &quot;$(NativeBuildDirectory)&quot; -DCMAKE_BUILD_TYPE=&quot;$(Configuration)&quot;" />
+    <Exec Command="&quot;$(CMakeExecutable)&quot; --build &quot;$(NativeBuildDirectory)&quot; --config &quot;$(Configuration)&quot;" />
+  </Target>
+</Project>

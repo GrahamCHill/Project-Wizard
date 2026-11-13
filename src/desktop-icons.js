@@ -202,7 +202,8 @@ async function macBundle(project, template, name, icon) {
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
     '<plist version="1.0"><dict>',
-    '  <key>CFBundleExecutable</key><string>' + executable + '</string>',
+    '  <key>CFBundleExecutable</key>',
+    '  <string>' + executable + '</string>',
     '  <key>CFBundleName</key><string>' + name + '</string>',
     '  <key>CFBundleIdentifier</key><string>com.example.' + slug + '</string>',
     ...(icon ? ['  <key>CFBundleIconFile</key><string>app.icns</string>'] : []),
@@ -215,40 +216,48 @@ async function macBundle(project, template, name, icon) {
     '#!/bin/sh', 'set -eu', 'cd "$(dirname "$0")/.."', 'app="packaged/' + name + '.app"',
     'mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"', ...commands,
     ...(icon ? ['cp assets/app.icns "$app/Contents/Resources/app.icns"'] : []),
-    'cat > "$app/Contents/Info.plist" <<\'PLIST\'', ...plist, 'PLIST', ''
+    'cat > "$app/Contents/Info.plist" <<\'PLIST\'', ...plist, 'PLIST',
+    ...(template.sdlBackend ? ['cmake "-DAPP_BUNDLE=$PWD/$app" -P native/cmake/FixBundle.cmake'] : []), ''
   ];
   await fs.writeFile(path.join(folder, 'package-macos.sh'), script.join('\n'), { flag: 'wx' });
   await fs.appendFile(path.join(project, '.gitignore'), '\n/packaged/\n');
-  await appendDistribution(project, 'On macOS, run `sh scripts/package-macos.sh` to build the `.app` bundle in `packaged/`.');
+  const instructions = 'On macOS, run `sh scripts/package-macos.sh` to build the `.app` bundle in `packaged/`.';
+  if (template.sdlBackend) await fs.appendFile(path.join(project, 'README.md'), '\n' + instructions + '\n');
+  else await appendDistribution(project, instructions);
 }
 
 async function dotnetIcons(project, template, name, icons) {
   const ico = icons.has('.ico');
   const raylib = template.group === 'raylib';
-  const png = raylib && icons.has('.png');
+  const png = (raylib || template.sdlBackend) && icons.has('.png');
   if (ico || png) {
     const manifest = (await fs.readdir(project)).find(file => file.endsWith('.csproj'));
     if (!manifest) throw new Error('The .NET starter did not generate a .csproj file.');
     await updateFile(project, manifest, source => source.replace('</Project>', [
-      ...(ico ? ['  <PropertyGroup>', '    <ApplicationIcon>assets/app.ico</ApplicationIcon>', '  </PropertyGroup>'] : []),
+      ...(ico ? ['  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform(\'Windows\'))">', '    <ApplicationIcon>assets/app.ico</ApplicationIcon>', '  </PropertyGroup>'] : []),
       ...(png ? ['  <ItemGroup>',
         '    <None Update="assets/app.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />',
         '  </ItemGroup>'] : []),
       '</Project>'
     ].join('\n')));
   }
-  if (ico && !raylib) {
+  if (ico && !raylib && !template.sdlBackend) {
     await updateFile(project, 'Program.cs', source => source.replace(
       'Application.Run(new Form1());',
       'Application.Run(new Form1 { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath) });'));
   }
-  if (png) {
+  if (png && raylib) {
     await updateFile(project, 'Program.cs', source => source.replace('Raylib.SetTargetFPS(60);', [
       'var icon = Raylib.LoadImage(Path.Combine(AppContext.BaseDirectory, "assets", "app.png"));',
       'Raylib.SetWindowIcon(icon);',
       'Raylib.UnloadImage(icon);',
       'Raylib.SetTargetFPS(60);'
     ].join('\n')));
+  }
+  if (template.sdlBackend) {
+    if (template.platforms?.includes('darwin') ?? true) await macBundle(project, template, name, icons.has('.icns'));
+    if (ico) await appendReadme(project, 'The Windows app host embeds `assets/app.ico`.');
+    return;
   }
   if (raylib) await macBundle(project, template, name, icons.has('.icns'));
   await fs.appendFile(path.join(project, '.gitignore'), '\n/dist/\n');
@@ -273,7 +282,7 @@ async function configureDesktopApp(project, template, name, options, icons, rast
   if (template.id === 'electron') return icons.size ? electronIcons(project, icons) : undefined;
   if (template.id === 'python-desktop') return pythonIcons(project, name, options, icons);
   if (template.id === 'java-desktop' || template.id === 'kotlin-desktop') return jvmIcons(project, template, name, options, icons);
-  if (template.kind === 'dotnet' || (template.language === 'C#' && template.group === 'raylib')) {
+  if (template.kind === 'dotnet' || template.sdlBackend || (template.language === 'C#' && template.group === 'raylib')) {
     return dotnetIcons(project, template, name, icons);
   }
   if (['swift-desktop', 'objc-desktop'].includes(template.id)) return macBundle(project, template, name, icons.has('.icns'));

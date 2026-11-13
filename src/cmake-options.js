@@ -77,7 +77,10 @@ function parseCmakeLibraries(template, chosen, lines, targets) {
   const available = cmakeLibraries(template);
   const selected = available.filter(library => chosen.includes(library.id));
   const bundled = template.id === 'cpp-lua-desktop' ? ['lua', 'lua_runtime', 'copy_script'] :
-    template.id === 'godot-native-cpp' ? ['godot_cpp', 'godot-cpp'] : [];
+    template.id === 'godot-native-cpp' ? ['godot_cpp', 'godot-cpp'] :
+      template.id === 'cpp-plugin-host' ? ['lua', 'lua_runtime', 'copy_lua', 'sample_plugin'] :
+        template.id === 'cpp-native-plugin-host' ? ['sample_plugin'] :
+          template.sdlBackend ? ['lua', 'lua_runtime'] : [];
   const names = new Set(['app', 'game', 'raylib', 'sdl2', 'sdl3', 'wxwidgets', 'googletest', 'catch2', 'example_test', 'starter_logic',
     template.cmakeTarget, 'bgfx_cmake', 'bx', 'bimg', 'stb_headers', ...bundled, ...selected.map(library => library.id)]);
   for (const line of lines) {
@@ -220,7 +223,7 @@ async function writeCmakeOptions(project, template, libraries, framework, target
       'Use CMake’s -DBUILD_TESTING=OFF option for a build without tests.\n');
   }
   const cmake = path.join(project, 'cmake');
-  await fs.mkdir(cmake);
+  await fs.mkdir(cmake, { recursive: true });
   await fs.writeFile(path.join(cmake, 'ProjectOptions.cmake'), lines.join('\n'), { flag: 'wx' });
   await fs.appendFile(path.join(project, 'CMakeLists.txt'), '\ninclude(cmake/ProjectOptions.cmake)\n');
 }

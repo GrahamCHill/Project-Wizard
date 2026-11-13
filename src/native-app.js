@@ -11,7 +11,7 @@ function executableIconFormats(template) {
   if (!template) return [];
   if (mobileIconTemplate(template)) return ['.png', '.webp'];
   if (template.id === 'flutter-desktop') return ['.png', '.webp', '.ico'];
-  const desktop = template.group === 'desktop' || (template.group === 'raylib' && template.language === 'C#') ||
+  const desktop = template.group === 'desktop' || template.sdlBackend || (template.group === 'raylib' && template.language === 'C#') ||
     template.id === 'godot' || template.id.startsWith('godot-native-');
   if (!(template.cmakeTarget && !template.cmakeLibrary) && !desktop) return [];
   return ['.png', '.webp', ...[['win32', '.ico'], ['darwin', '.icns']].filter(([platform]) =>

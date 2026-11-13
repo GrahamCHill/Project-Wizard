@@ -4,6 +4,7 @@ const { getSdk, replaceTokens } = require('./projects');
 const { standardTemplates } = require('./standard-templates');
 const { generators } = require('./npm-generators');
 const { externalGenerators } = require('./external-generators');
+const { sdlMixedStarters, pluginStarters } = require('./mixed-starters');
 
 async function readStarterText(file) {
   return (await fs.readFile(file, 'utf8')).replaceAll('\r\n', '\n');
@@ -57,6 +58,8 @@ const starters = [
     description: 'A native Windows desktop application using Windows Forms.',
     requirement: 'Windows with .NET SDK 8 or newer.', next: 'Run dotnet run from the project folder.'
   },
+  ...sdlMixedStarters,
+  ...pluginStarters,
   ...standardTemplates,
   ...generators,
   ...externalGenerators,
@@ -75,7 +78,10 @@ async function writeStarter(template, name, project, parent, log, tools = {}) {
     .replaceAll('__UNITY_VERSION__', tools['unity-editor']?.editorVersion || '6000.3.0f1')
     .replaceAll('__UNREAL_ASSOCIATION__', tools['unreal-editor']?.association || '')
     .replaceAll('__UNREAL_MODULE__', moduleName)
-    .replaceAll('__UNREAL_API__', moduleName.toUpperCase() + '_API');
+    .replaceAll('__UNREAL_API__', moduleName.toUpperCase() + '_API')
+    .replaceAll('__SDL_BACKEND__', template.sdlBackend || '')
+    .replaceAll('__SDL_BACKEND_LABEL__', template.sdlBackendLabel || '')
+    .replaceAll('__SDL_BACKEND_NOTE__', template.sdlBackendNote || '');
   for (const file of template.files) {
     const contents = await readStarterText(path.join(templateRoot, file));
     const output = file === 'gitignore' ? '.gitignore' : cpp && template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
@@ -88,6 +94,12 @@ async function writeStarter(template, name, project, parent, log, tools = {}) {
       source = source.replaceAll('__SDL_VERSION__', template.sdlVersion).replaceAll('__SDL_MAJOR__', template.sdlVersion[0]);
     }
     await fs.writeFile(target, renderTokens(source), { flag: 'wx' });
+  }
+  for (const [file, output] of Object.entries(template.sharedFiles || {})) {
+    const source = await readStarterText(path.join(__dirname, '..', 'templates', '_shared', file));
+    const destination = path.join(project, output);
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.writeFile(destination, renderTokens(source), { flag: 'wx' });
   }
   if (template.cmakeTarget) {
     const shared = path.join(__dirname, '..', 'templates', '_shared', 'native');

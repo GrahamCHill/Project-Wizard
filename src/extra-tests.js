@@ -119,7 +119,7 @@ async function addDotnetTests(project, parent, framework, log, subject) {
   const assertion = xunit ? `Assert.Equal(${expected}, ${call});` : `Assert.That(${call}, Is.EqualTo(${expected}));`;
   const source = [
     xunit ? 'using Xunit;' : 'using NUnit.Framework;', '', 'namespace Example.Tests;', '', 'public class ExampleTests', '{',
-    xunit ? '    [Fact]' : '    [Test]', `    public void ${subject ? 'WrapsPositionInCpp' : 'AddsTwoNumbers'}()`,
+    xunit ? '    [Fact]' : '    [Test]', `    public void ${subject?.name || 'AddsTwoNumbers'}()`,
     '    {', '        ' + assertion, '    }',
     ...(subject ? [] : ['', '    private static int Add(int left, int right) => left + right;']), '}', ''
   ].join('\n');
@@ -131,8 +131,7 @@ async function addDotnetTests(project, parent, framework, log, subject) {
     if (updated === original) throw new Error('Could not exclude test sources from the application project.');
     await fs.writeFile(target, updated);
   }
-  const note = subject ? 'The test calls the same C++ function that moves the circle in the app.' :
-    (xunit ? 'xUnit' : 'NUnit') + ' runs as a separate test project.';
+  const note = subject?.note || (xunit ? 'xUnit' : 'NUnit') + ' runs as a separate test project.';
   await testInstructions(project, note, 'dotnet test tests/' + name + '.csproj');
 }
 

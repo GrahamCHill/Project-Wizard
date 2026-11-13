@@ -174,6 +174,39 @@ test('generates the bundled source templates with portable names and run instruc
   }
 });
 
+test('scaffolds mixed SDL backends and both plugin contracts with Lua', async t => {
+  const root = await fixture(t);
+  const backends = { vulkan: 'vulkan', opengl: 'opengl', directx: 'direct3d11' };
+  for (const [id, driver] of Object.entries(backends)) {
+    const template = starters.find(item => item.id === `sdl3-${id}-csharp-cpp-lua`);
+    const name = `Mixed ${id}`;
+    const project = await createProject(root, name, async (target, parent) => {
+      await writeStarter({ ...template, needsSdk: false }, name, target, parent);
+      await applyProjectOptions(target, template, name, readProjectOptions(template, { dependencies: 'libuv' }));
+    });
+    const cmake = await fs.readFile(path.join(project, 'native/CMakeLists.txt'), 'utf8');
+    assert.ok(cmake.includes(`PW_SDL_BACKEND="${driver}"`));
+    assert.match(cmake, /SDL3::SDL3-static lua_runtime/);
+    assert.match(await fs.readFile(path.join(project, 'native/cmake/ProjectOptions.cmake'), 'utf8'), /pw_native PRIVATE uv_a/);
+    assert.match(await fs.readFile(path.join(project, 'scripts/behavior.lua'), 'utf8'), /function update\(/);
+    assert.equal(templatesForPlatform([template], 'darwin').length, id === 'directx' ? 0 : 1);
+  }
+  for (const [id, contract] of [['cpp-plugin-host', 'include/plugin_api.h'], ['csharp-plugin-host', 'contracts/IPlugin.cs']]) {
+    const template = starters.find(item => item.id === id);
+    const project = await createProject(root, id, (target, parent) => writeStarter({ ...template, needsSdk: false }, id, target, parent));
+    assert.match(await fs.readFile(path.join(project, contract), 'utf8'), /plugin_greet|interface IPlugin/);
+    assert.match(await fs.readFile(path.join(project, 'plugins/greeting.lua'), 'utf8'), /return "Hello/);
+  }
+  const nativeHost = starters.find(item => item.id === 'cpp-native-plugin-host');
+  const project = await createProject(root, nativeHost.id, (target, parent) => writeStarter(nativeHost, nativeHost.id, target, parent));
+  assert.deepEqual(nativeHost.tools, ['cmake', 'cpp-compiler']);
+  assert.match(await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8'), /LANGUAGES CXX\)/);
+  assert.match(await fs.readFile(path.join(project, 'cmake/PluginHost.cmake'), 'utf8'), /add_library\(sample_plugin MODULE/);
+  assert.match(await fs.readFile(path.join(project, 'src/native_plugin.cpp'), 'utf8'), /version\(\) != PLUGIN_API_VERSION/);
+  await assert.rejects(fs.access(path.join(project, 'cmake/Lua.cmake')), { code: 'ENOENT' });
+  await assert.rejects(fs.access(path.join(project, 'plugins/greeting.lua')), { code: 'ENOENT' });
+});
+
 test('recognizes web, desktop, and game project files', () => {
   assert.deepEqual(detectFrameworks('package.json', '{"dependencies":{"nuxt":"^4","next":"^16"},"devDependencies":{"electron":"^45"}}'),
     ['Next.js', 'Nuxt', 'Electron']);

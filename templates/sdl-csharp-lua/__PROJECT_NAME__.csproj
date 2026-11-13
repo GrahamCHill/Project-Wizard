@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>__TARGET_FRAMEWORK__</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefaultItemExcludes>$(DefaultItemExcludes);native/build/**</DefaultItemExcludes>
+    <NativeBuildDirectory>$(MSBuildProjectDirectory)/native/build/$(Configuration)</NativeBuildDirectory>
+    <NativeLibraryName Condition="$([MSBuild]::IsOSPlatform('Windows'))">pw_native.dll</NativeLibraryName>
+    <NativeLibraryName Condition="$([MSBuild]::IsOSPlatform('Linux'))">libpw_native.so</NativeLibraryName>
+    <NativeLibraryName Condition="$([MSBuild]::IsOSPlatform('OSX'))">libpw_native.dylib</NativeLibraryName>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(NativeBuildDirectory)/bin/$(NativeLibraryName)" Link="$(NativeLibraryName)"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="scripts/behavior.lua" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Import Project="native/BuildNative.targets" />
+  <Target Name="BuildNativeForPublish" BeforeTargets="InstallNativeRuntime" DependsOnTargets="FindWindowsCMake"
+          Condition="'$(CMakeExecutable)' == ''">
+    <PropertyGroup>
+      <CMakeExecutable Condition="'$(CMakeExecutable)' == ''">cmake</CMakeExecutable>
+    </PropertyGroup>
+  </Target>
+  <Target Name="InstallNativeRuntime" AfterTargets="Publish">
+    <Exec Command="&quot;$(CMakeExecutable)&quot; --install &quot;$(NativeBuildDirectory)&quot; --config &quot;$(Configuration)&quot; --prefix &quot;$([System.IO.Path]::GetFullPath('$(PublishDir).'))&quot; --component AppRuntime" />
+  </Target>
+</Project>

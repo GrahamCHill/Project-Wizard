@@ -8,17 +8,35 @@ public:
     {
         set_title("__PROJECT_NAME__");
         set_default_size(440, 280);
-        button.set_halign(Gtk::Align::CENTER);
-        button.set_valign(Gtk::Align::CENTER);
-        button.signal_clicked().connect([this] {
-            count = starter_add(count, 1);
-            button.set_label("Clicks: " + std::to_string(count));
-        });
-        set_child(button);
+        layout.set_halign(Gtk::Align::CENTER);
+        layout.set_valign(Gtk::Align::CENTER);
+        increment.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_increment));
+        reset.signal_clicked().connect(sigc::mem_fun(*this, &MainWindow::on_reset));
+        layout.append(label);
+        layout.append(increment);
+        layout.append(reset);
+        set_child(layout);
     }
 
 private:
-    Gtk::Button button{"Click me"};
+    void on_increment()
+    {
+        count = starter_add(count, 1);
+        refresh_count();
+    }
+
+    void on_reset()
+    {
+        count = 0;
+        refresh_count();
+    }
+
+    void refresh_count() { label.set_text("Clicks: " + std::to_string(count)); }
+
+    Gtk::Box layout{Gtk::Orientation::VERTICAL, 12};
+    Gtk::Label label{"Clicks: 0"};
+    Gtk::Button increment{"Increment"};
+    Gtk::Button reset{"Reset"};
     int count = 0;
 };
 

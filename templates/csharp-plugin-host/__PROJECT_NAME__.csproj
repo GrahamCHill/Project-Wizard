@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>__TARGET_FRAMEWORK__</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="contracts/**/*.cs;samples/**/*.cs" />
+    <PackageReference Include="MoonSharp" Version="2.0.0" />
+    <ProjectReference Include="contracts/PluginContract.csproj" />
+    <ProjectReference Include="samples/GreetingPlugin/GreetingPlugin.csproj" ReferenceOutputAssembly="false" />
+    <None Update="plugins/greeting.lua" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CopySamplePlugin" AfterTargets="Build">
+    <MSBuild Projects="samples/GreetingPlugin/GreetingPlugin.csproj" Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration)" RemoveProperties="RuntimeIdentifier;SelfContained">
+      <Output TaskParameter="TargetOutputs" ItemName="PluginAssembly" />
+    </MSBuild>
+    <Copy SourceFiles="@(PluginAssembly)" DestinationFolder="$(OutDir)plugins/GreetingPlugin" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishSamplePlugin" AfterTargets="Publish">
+    <Copy SourceFiles="@(PluginAssembly)" DestinationFolder="$(PublishDir)plugins/GreetingPlugin" SkipUnchangedFiles="true"
+          Condition="'@(PluginAssembly)' != ''" />
+  </Target>
+</Project>

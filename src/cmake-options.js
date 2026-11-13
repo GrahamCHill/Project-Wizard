@@ -66,6 +66,7 @@ const libraries = [
 
 function cmakeLibraries(template) {
   return libraries.filter(library => library.languages.includes(template.language) &&
+    !(library.id === 'imgui' && template.id === 'sfml-imgui-cpp') &&
     !(library.desktopOnly && template.androidCmake));
 }
 
@@ -83,6 +84,13 @@ function parseCmakeLibraries(template, chosen, lines, targets) {
           template.sdlBackend ? ['lua', 'lua_runtime'] : [];
   const names = new Set(['app', 'game', 'raylib', 'sdl2', 'sdl3', 'wxwidgets', 'googletest', 'catch2', 'example_test', 'starter_logic',
     template.cmakeTarget, 'bgfx_cmake', 'bx', 'bimg', 'stb_headers', ...bundled, ...selected.map(library => library.id)]);
+  if (template.id === 'sfml-cpp' || template.id === 'sfml-imgui-cpp') {
+    for (const name of ['sfml', 'freetype', 'harfbuzz', 'sheenbidi']) names.add(name);
+    if (template.id === 'sfml-imgui-cpp') {
+      names.add('imgui');
+      names.add('imgui-sfml');
+    }
+  }
   for (const line of lines) {
     const [id, target, url, hash, extra] = line.split(/\s+/);
     if (names.has(id)) throw new Error('Duplicate or reserved CMake dependency name: ' + id);

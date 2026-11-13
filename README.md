@@ -48,7 +48,7 @@ LaTeX templates are off by default. Select **Enable LaTeX templates** and save t
 | Systems | x86-64 NASM for Windows, Linux, and Intel macOS, ARM64 assembly for Linux and Apple silicon macOS, and Linux kernel modules |
 | Desktop | Qt, wxWidgets, GTK, GTKmm, and C++ + Lua with CMake, plus Flutter, Tauri, Electron, Python Tkinter, Java and Kotlin Swing, macOS SwiftUI and AppKit, and Windows Forms |
 | Mobile | React Native with Expo or the Community CLI, Android Jetpack Compose, iOS SwiftUI, and Flutter for Android and iOS |
-| Graphics | SDL2 and SDL3 in C and C++, mixed C# + C++ + Lua SDL3 with Vulkan, OpenGL, or DirectX 11, and LÖVE for Lua |
+| Graphics | SFML and SFML + Dear ImGui in C++, SDL2 and SDL3 in C and C++, mixed C# + C++ + Lua SDL3 with Vulkan, OpenGL, or DirectX 11, and LÖVE for Lua |
 | Web frontend | Flutter Web, Next.js, Nuxt, static HTML/CSS/JavaScript, and TypeScript with Vite |
 | Web server | Dart JSON API, FastAPI, Django, and Flask for Python, Ruby with Sinatra, PHP and Laravel + Vue, Rust with Axum, Go, Java, Kotlin/JVM, Node.js, and ASP.NET Core |
 | Games | MonoGame, Raylib for C, C++, or C#, and a mixed C++ and C# Raylib app |
@@ -84,6 +84,8 @@ Under **Game Engines**, Unity includes a demo scene with a rotating cube and ded
 In **Graphics**, choose your SDL version, graphics API, and language from the template names. The Vulkan starters clear and present a Vulkan swapchain and rebuild it on resize. Use a Vulkan 1.1 runtime and development files 1.3.216 or newer. On macOS, use the Vulkan SDK with MoltenVK. If a template needs setup, clear **Ready to use** to see the guide. [Vulkan SDK downloads](https://vulkan.lunarg.com/sdk/home)
 
 The mixed SDL3 starters put the app loop and state in C#, SDL rendering in C++, and reloadable behavior in Lua. Choose Vulkan, OpenGL, or Windows-only DirectX 11 in **Graphics**. `dotnet run` builds the native bridge and launches the example. Press **R** to reload the Lua script while the window is open. The generated README covers self-contained publishing and macOS app bundles. [SDL renderer selection](https://wiki.libsdl.org/SDL3/SDL_CreateRenderer)
+
+The **SFML** and **SFML + Dear ImGui** starters use SFML 3.1 and CMake on Windows, Linux, and macOS. The first has a circle you can move with the arrow keys. The second has an ImGui panel that changes the rendered circle’s size and color. Both support app icons and the `distribution` target. [SFML CMake setup](https://www.sfml-dev.org/tutorials/3.1/getting-started/cmake/) · [ImGui-SFML](https://github.com/SFML/imgui-sfml/releases/tag/v3.0)
 
 The **C++ Plugin Host**, **C++ Plugin Host + Lua**, and **C# Plugin Host + Lua** starters scan a `plugins/` folder next to the executable at launch. The pure C++ starter builds with a C++ compiler and CMake and includes a native sample plugin with a versioned C ABI. The Lua variants also include a sample script. The C# host uses a shared `IPlugin` contract and a separate assembly load context per plugin.
 

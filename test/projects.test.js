@@ -697,6 +697,28 @@ test('offers OpenGL and Vulkan for both SDL versions and checks Vulkan setup', a
   }
 });
 
+test('scaffolds both SFML desktop projects and keeps the ImGui backend on one version', async t => {
+  const root = await fixture(t);
+  for (const [id, imgui] of [['sfml-cpp', false], ['sfml-imgui-cpp', true]]) {
+    const template = starters.find(item => item.id === id);
+    const tools = { 'cmake-3.28': {}, 'cpp-compiler': {}, git: {} };
+    assert.equal(templateAvailability(template, tools, 'win32').ready, true);
+    assert.deepEqual(templateAvailability(template, tools, 'linux').missing.map(tool => tool.id), ['sfml-desktop']);
+    assert.equal(projectOptions(template, tools).libraries.some(library => library.id === 'imgui'), !imgui);
+    const project = await createProject(root, id, async (target, parent) => {
+      await writeStarter(template, id, target, parent);
+      await applyProjectOptions(target, template, id, readProjectOptions(template, {}), parent);
+    });
+    const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
+    assert.match(cmake, /cmake_minimum_required\(VERSION 3\.28\)/);
+    assert.match(cmake, /MACOSX_BUNDLE TRUE/);
+    assert.match(cmake, /include\(cmake\/Distribution\.cmake\)/);
+    assert.equal(cmake.includes('ImGui-SFML::ImGui-SFML'), imgui);
+    const source = await fs.readFile(path.join(project, 'src/main.cpp'), 'utf8');
+    assert.match(source, imgui ? /ImGui::SliderFloat/ : /sf::Keyboard::isKeyPressed/);
+  }
+});
+
 test('requires a Python environment manager and exposes only matching local interpreter versions', () => {
   const template = starters.find(item => item.id === 'python-desktop');
   const config = projectOptions(template, { uv: { file: 'uv' } }, [

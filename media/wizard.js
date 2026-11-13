@@ -26,7 +26,7 @@ const recentList = byId('recent-project-list');
 const groupTitles = {
   all: 'Templates', cli: 'Command Line', desktop: 'Desktop', mobile: 'Mobile', graphics: 'Graphics', frontend: 'Web Frontend', server: 'Web Server',
   monogame: 'MonoGame', raylib: 'Raylib', games: 'Game Engines', blender: 'Blender', ai: 'ML & AI',
-  documents: 'Documents', zip: 'Custom ZIPs', vr: 'VR'
+  documents: 'Documents', zip: 'Custom ZIPs', vr: 'VR', systems: 'Systems'
 };
 
 let catalog;
@@ -401,6 +401,9 @@ function updateCatalog({ preserveSelection = false } = {}) {
   const showLatex = catalog?.settings.enableLatexTemplates === true;
   categories.querySelector('[data-group="documents"]').hidden = !showLatex;
   if (!showLatex && group === 'documents') group = 'all';
+  const showSystems = catalog?.templates.some(template => template.group === 'systems');
+  categories.querySelector('[data-group="systems"]').hidden = !showSystems;
+  if (!showSystems && group === 'systems') group = 'all';
   byId('catalog-heading').textContent = groupTitles[group];
   for (const button of categories.querySelectorAll('button')) {
     button.setAttribute('aria-pressed', String(button.dataset.group === group));

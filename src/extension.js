@@ -96,6 +96,7 @@ function wizardHtml(webview, extensionUri) {
         <nav aria-label="Template categories" id="categories">
           <button type="button" data-group="all" aria-pressed="true">All Templates</button>
           <button type="button" data-group="cli" aria-pressed="false">Command Line</button>
+          <button type="button" data-group="systems" aria-pressed="false" hidden>Systems</button>
           <button type="button" data-group="desktop" aria-pressed="false">Desktop</button>
           <button type="button" data-group="mobile" aria-pressed="false">Mobile</button>
           <button type="button" data-group="graphics" aria-pressed="false">Graphics</button>
@@ -400,7 +401,7 @@ function activate(context) {
       detected: Object.entries(detected).filter(([id, result]) =>
         !['vite-node', 'expo-node', 'react-native-node', 'next-node', 'nuxt-node', 'electron-node',
           'android-gradle', 'android-xr-gradle', 'compose-gradle', 'java-17', 'kmp-gradle',
-          'godot-rust', 'laravel-php', 'ml-python'].includes(id) && result)
+          'godot-rust', 'laravel-php', 'ml-python', 'cmake-3.28'].includes(id) && result)
         .map(([id, result]) => ({ label: toolchains[id].label, ...result }))
         .sort((a, b) => a.label.localeCompare(b.label)),
       sdkVersion: sdk.version, sdkError: sdk.error, monoError, monoCount: mono.length,

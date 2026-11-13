@@ -277,6 +277,27 @@ const toolchains = {
     label: 'CMake', url: 'https://cmake.org/download/',
     instructions: 'Install a current CMake release (3.24 or newer) and add it to PATH.'
   },
+  'cmake-3.28': {
+    label: 'CMake 3.28+', url: 'https://cmake.org/download/',
+    instructions: 'Install CMake 3.28 or newer and add it to PATH.'
+  },
+  'sfml-desktop': {
+    label: 'SFML desktop development files', url: 'https://www.sfml-dev.org/tutorials/3.1/getting-started/cmake/#requirements',
+    instructions: 'Install pkg-config and the X11, Xrandr, Xcursor, Xi, udev, OpenGL, FreeType, and HarfBuzz development packages. The generated README includes the Debian and Ubuntu command.'
+  },
+  nasm: {
+    label: 'NASM', url: 'https://www.nasm.us/',
+    instructions: 'Install NASM and add it to PATH. On Linux, use your distribution’s nasm package.',
+    windows: 'winget install --exact --id NASM.NASM', macos: 'brew install nasm'
+  },
+  'gnu-make': {
+    label: 'GNU Make', url: 'https://www.gnu.org/software/make/',
+    instructions: 'Install your Linux distribution’s GNU Make package.'
+  },
+  'linux-kernel-headers': {
+    label: 'Linux kernel build headers', url: 'https://docs.kernel.org/kbuild/modules.html',
+    instructions: 'Install the build headers for the kernel from uname -r. On Debian or Ubuntu, install linux-headers-$(uname -r). On Fedora, install kernel-devel for that release. For a custom kernel, set KDIR to its prepared build directory before starting VS Code.'
+  },
   'qt-widgets': {
     label: 'Qt 6 Widgets', url: 'https://doc.qt.io/qt-6/qt-online-installation.html',
     instructions: 'Install a Qt 6.5 or newer desktop kit with Widgets and set CMAKE_PREFIX_PATH to its kit folder.'
@@ -509,6 +530,19 @@ async function findPackageManager(dirs, platform) {
   }
 }
 
+async function findKernelHeaders(env, release) {
+  const directory = env.KDIR || path.join('/lib/modules', release, 'build');
+  if (!path.isAbsolute(directory)) return;
+  const [config, makefile] = await Promise.all([
+    fs.readFile(path.join(directory, 'include', 'config', 'auto.conf'), 'utf8').catch(() => ''),
+    fs.stat(path.join(directory, 'Makefile')).catch(() => undefined)
+  ]);
+  if (makefile?.isFile() && /^CONFIG_MODULES=y\r?$/m.test(config)) {
+    const version = await fs.readFile(path.join(directory, 'include', 'config', 'kernel.release'), 'utf8').catch(() => '');
+    return { version: version.trim() || 'Prepared build tree', file: directory };
+  }
+}
+
 async function findAndroidTools({ env, home, platform }) {
   const defaultSdk = platform === 'win32' && env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, 'Android', 'Sdk') :
     platform === 'darwin' ? path.join(home, 'Library', 'Android', 'sdk') : path.join(home, 'Android', 'Sdk');
@@ -710,10 +744,16 @@ async function detectToolchains(settings = system) {
       [bin(env.MAVEN_HOME), bin(env.M2_HOME), path.join(home, '.sdkman', 'candidates', 'maven', 'current', 'bin')]),
     probe(['emcc'], ['--version'], /\bemcc[^\r\n]*?\b(\d+\.\d+\.\d+)/,
       [env.EMSDK && path.join(env.EMSDK, 'upstream', 'emscripten')]),
-    findAndroidTools(settings)
+    findAndroidTools(settings),
+    probe(['nasm'], ['-v'], /\bNASM version (\d+\.\d+(?:\.\d+)?)/i, [
+      windows && programFiles && path.join(programFiles, 'NASM'),
+      windows && env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'bin', 'NASM')
+    ]),
+    platform === 'linux' ? probe(['make'], ['--version'], /\bGNU Make (\d+\.\d+(?:\.\d+)?)/) : undefined,
+    platform === 'linux' ? findKernelHeaders(env, os.release()) : undefined
   ]);
   const [uv, conda, virtualenv, rustc, cargo, go, swift, javac, kotlin, zig, node, npm, cmake, compiler, cpp, cuda, qt, manager,
-    [git, ruby, bundler, php, lua, love, gradle, maven, emscripten, android], vulkanSdk] = await Promise.all([
+    [git, ruby, bundler, php, lua, love, gradle, maven, emscripten, android, nasm, make, kernelHeaders], vulkanSdk] = await Promise.all([
     probe(['uv'], ['--version'], /\buv (\d+\.\d+\.\d+)/, [path.join(home, '.cargo', 'bin')]),
     probe(['conda'], ['--version'], /\bconda (\d+\.\d+(?:\.\d+)?)/, [
       env.CONDA_EXE && path.dirname(env.CONDA_EXE),
@@ -764,8 +804,10 @@ async function detectToolchains(settings = system) {
     const required = await Promise.all([compilerName, 'ninja', 'cmake'].map(name => candidates([name], [tools], platform)));
     return required.every(files => files.length) ? kit : undefined;
   };
-  const [[wx, gtk, x11, wayland, gl], gtk4, gtkmm, webkit, ssl, webView, editors, supplemental] = await Promise.all([
-    linuxGraphics, gtkKit('gtk4', 'gcc'), gtkKit('gtkmm-4.0', 'g++'),
+  const [[wx, gtk, x11, wayland, gl], sfmlDependencies, gtk4, gtkmm, webkit, ssl, webView, editors, supplemental] = await Promise.all([
+    linuxGraphics,
+    platform === 'linux' ? Promise.all(['xrandr', 'xcursor', 'xi', 'libudev', 'freetype2', 'harfbuzz'].map(pkgConfig)) : [],
+    gtkKit('gtk4', 'gcc'), gtkKit('gtkmm-4.0', 'g++'),
     platform === 'linux' ? pkgConfig('webkit2gtk-4.1') : undefined,
     platform === 'linux' ? pkgConfig('openssl') : undefined,
     windows && studio ? findWebView(settings) : undefined,
@@ -811,10 +853,13 @@ async function detectToolchains(settings = system) {
     gtk4, 'gtkmm-4.0': gtkmm,
     npm,
     cmake: requireVersion(cmake, 3, 24),
+    'cmake-3.28': requireVersion(cmake, 3, 28),
+    nasm, 'gnu-make': make, 'linux-kernel-headers': kernelHeaders,
     'c-compiler': systemCompiler || compiler,
     'cpp-compiler': systemCompiler || cpp,
     'wx-gtk': wx || gtk,
     'sdl-desktop': x11 || wayland,
+    'sfml-desktop': x11 && gl && sfmlDependencies.every(Boolean) ? { version: 'X11 / OpenGL', file: x11.file } : undefined,
     'opengl-dev': gl,
     'vulkan-dev': requireVersion(vulkanSdk || (!windows ? await pkgConfig('vulkan') : undefined), 1, 3, 216),
     cuda,
@@ -825,8 +870,13 @@ async function detectToolchains(settings = system) {
   return { results, manager, pythonVersions };
 }
 
-function templatesForPlatform(templates, platform) {
-  return templates.filter(template => !template.platforms || template.platforms.includes(platform));
+function supportsHost(template, platform, architecture) {
+  return (!template.platforms || template.platforms.includes(platform)) &&
+    (!template.architectures || template.architectures.includes(architecture));
+}
+
+function templatesForPlatform(templates, platform, architecture = process.arch) {
+  return templates.filter(template => supportsHost(template, platform, architecture));
 }
 
 function getSetup(id, platform, manager) {
@@ -839,8 +889,8 @@ function getSetup(id, platform, manager) {
   };
 }
 
-function templateAvailability(template, tools, platform, manager) {
-  const supported = !template.platforms || template.platforms.includes(platform);
+function templateAvailability(template, tools, platform, manager, architecture = process.arch) {
+  const supported = supportsHost(template, platform, architecture);
   const available = { ...tools };
   if (template.language === 'Python' && (tools.uv || tools.conda)) {
     available.python = { usable: true };

@@ -5,6 +5,17 @@ const { standardTemplates } = require('./standard-templates');
 const { generators } = require('./npm-generators');
 const { externalGenerators } = require('./external-generators');
 const { sdlMixedStarters, pluginStarters } = require('./mixed-starters');
+const { systemsStarters } = require('./systems-starters');
+
+const sfmlStarter = {
+  group: 'graphics', kind: 'starter', language: 'C++', cmakeTarget: 'app',
+  platforms: ['win32', 'darwin', 'linux'], tools: ['cmake-3.28', 'cpp-compiler', 'git'],
+  platformTools: { linux: ['sfml-desktop'] },
+  requirement: 'CMake 3.28+, a C++17 compiler, Git, and SFML’s desktop development dependencies on Linux.',
+  next: 'Build and run the sample using README.md.',
+  files: ['CMakeLists.txt', 'src/main.cpp', 'README.md'],
+  sharedFiles: { 'sfml/SFML.cmake': 'cmake/SFML.cmake', 'sfml/gitignore': '.gitignore' }
+};
 
 async function readStarterText(file) {
   return (await fs.readFile(file, 'utf8')).replaceAll('\r\n', '\n');
@@ -59,7 +70,16 @@ const starters = [
     requirement: 'Windows with .NET SDK 8 or newer.', next: 'Run dotnet run from the project folder.'
   },
   ...sdlMixedStarters,
+  {
+    ...sfmlStarter, id: 'sfml-cpp', label: 'SFML',
+    description: 'A resizable SFML 3 window with a shape you can move with the arrow keys.'
+  },
+  {
+    ...sfmlStarter, id: 'sfml-imgui-cpp', label: 'SFML + Dear ImGui',
+    description: 'An SFML 3 scene with a Dear ImGui panel for changing the shape’s size and color.'
+  },
   ...pluginStarters,
+  ...systemsStarters,
   ...standardTemplates,
   ...generators,
   ...externalGenerators,

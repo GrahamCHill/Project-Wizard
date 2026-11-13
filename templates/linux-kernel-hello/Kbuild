@@ -1,0 +1,2 @@
+obj-m := pw_hello.o
+pw_hello-y := src/module.o

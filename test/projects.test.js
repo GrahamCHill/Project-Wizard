@@ -633,7 +633,7 @@ test('preserves mobile dependencies and adds selected npm packages and tests', a
 
 test('pairs every C starter with a C++ CMake build', async t => {
   const root = await fixture(t);
-  const cTemplates = starters.filter(template => template.language === 'C');
+  const cTemplates = starters.filter(template => template.language === 'C' && template.cmakeTarget);
   assert.ok(cTemplates.length >= 5);
   for (const c of cTemplates) {
     const cppId = c.id === 'c-cmake' ? 'cpp-cmake' : c.id.replace(/-c$/, '-cpp');
@@ -647,6 +647,28 @@ test('pairs every C starter with a C++ CMake build', async t => {
       assert.ok(cmake.includes('LANGUAGES ' + language + ')'));
       assert.ok(cmake.includes('src/main.' + suffix));
       assert.ok(await fs.stat(path.join(project, 'src', 'main.' + suffix)));
+    }
+  }
+});
+
+test('offers assembly for matching architectures and kernel modules on Linux only', async t => {
+  const root = await fixture(t);
+  const systems = starters.filter(template => template.group === 'systems');
+  const idsFor = (platform, architecture) => templatesForPlatform(systems, platform, architecture).map(template => template.id);
+  assert.deepEqual(idsFor('win32', 'x64'), ['assembly-x64']);
+  assert.deepEqual(idsFor('darwin', 'arm64'), ['assembly-arm64']);
+  assert.deepEqual(idsFor('linux', 'arm64'), ['assembly-arm64', 'linux-kernel-hello', 'linux-kernel-chardev']);
+  const tools = { cmake: {}, 'c-compiler': {}, nasm: {}, 'gnu-make': {} };
+  for (const template of systems) {
+    const project = await createProject(root, template.id, (target, parent) => writeStarter(template, template.id, target, parent));
+    if (template.language === 'Assembly') {
+      assert.match(await fs.readFile(path.join(project, 'tests/test_add.c'), 'utf8'), /assembly_add\(7, -3\)/);
+      assert.match(await fs.readFile(path.join(project, 'cmake/AssemblyApp.cmake'), 'utf8'), /add_test\(NAME assembly_add/);
+    } else {
+      assert.deepEqual(templateAvailability(template, tools, 'linux').missing.map(tool => tool.id), ['linux-kernel-headers']);
+      assert.equal(templateAvailability(template, { ...tools, 'linux-kernel-headers': {} }, 'linux').ready, true);
+      assert.match(await fs.readFile(path.join(project, 'Makefile'), 'utf8'), /\t\$\(MAKE\) -C .* modules/);
+      assert.match(await fs.readFile(path.join(project, 'Kbuild'), 'utf8'), /^obj-m := pw_\w+\.o/m);
     }
   }
 });

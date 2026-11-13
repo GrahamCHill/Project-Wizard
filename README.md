@@ -45,6 +45,7 @@ LaTeX templates are off by default. Select **Enable LaTeX templates** and save t
 | Category | Examples |
 | --- | --- |
 | Command line | C and C++ with CMake, CUDA kernel and library, Dart, Python, Ruby, PHP, Lua, Rust, Go, Swift, Java, Kotlin/JVM, Zig, and .NET |
+| Systems | x86-64 NASM for Windows, Linux, and Intel macOS, ARM64 assembly for Linux and Apple silicon macOS, and Linux kernel modules |
 | Desktop | Qt, wxWidgets, GTK, GTKmm, and C++ + Lua with CMake, plus Flutter, Tauri, Electron, Python Tkinter, Java and Kotlin Swing, macOS SwiftUI and AppKit, and Windows Forms |
 | Mobile | React Native with Expo or the Community CLI, Android Jetpack Compose, iOS SwiftUI, and Flutter for Android and iOS |
 | Graphics | SDL2 and SDL3 in C and C++, mixed C# + C++ + Lua SDL3 with Vulkan, OpenGL, or DirectX 11, and LÖVE for Lua |
@@ -59,6 +60,8 @@ LaTeX templates are off by default. Select **Enable LaTeX templates** and save t
 | VR (opt-in) | Kotlin with Jetpack Compose for XR, plus native Android Raylib for C and C++ |
 
 The generated README provides build and run commands. Use a Qt kit that matches your C++ compiler and set `CMAKE_PREFIX_PATH` to that kit. CUDA projects require the NVIDIA CUDA Toolkit and a supported host compiler. Running a CUDA sample also needs a compatible GPU and driver. Expo uses Node.js 22.13 or newer and a compatible Expo SDK 57 client or development build. [Qt setup](https://doc.qt.io/qt-6/qt-online-installation.html) · [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) · [Expo device setup](https://docs.expo.dev/get-started/set-up-your-environment/)
+
+Under **Systems**, the assembly starters appear on their matching architectures. Both include a C launcher and a CTest example that calls the assembly routine. On Linux, the wizard also offers a module with load and unload hooks and a read-only character device. The modules use GNU Make and the Linux kernel’s kbuild system. The wizard checks for build headers for the running kernel or the prepared build tree set in `KDIR`. The generated READMEs show how to build and try the modules in a Linux VM. [NASM documentation](https://www.nasm.us/docs.html) · [Linux external modules](https://docs.kernel.org/kbuild/modules.html)
 
 The CMake desktop starters, including SDL2, SDL3, and their OpenGL and Vulkan variants, include a `distribution` build target. Configure a Release build and run `cmake --build build --config Release --target distribution` to collect the app and its runtime libraries in `build/dist/Release/`. Share the entire folder for the target OS and architecture. Windows Vulkan packages include the loader. The macOS packaging step copies linked dylibs and frameworks into the `.app`, rewrites their paths, and adds MoltenVK for Vulkan apps. Graphics drivers and OS libraries come from the destination system. Other desktop starters provide packaging commands for their toolchains in the generated README. [CMake BundleUtilities](https://cmake.org/cmake/help/latest/module/BundleUtilities.html)
 

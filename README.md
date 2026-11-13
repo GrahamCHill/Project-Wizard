@@ -18,7 +18,7 @@ For development, open this folder in VS Code and press `F5` to start the **Run P
 
 ## Open the project menu
 
-1. Press `Ctrl+Shift+P` on Windows or Linux, or `Cmd+Shift+P` on macOS. Run **Project Wizard: New Project**.
+1. Click the **Project Wizard** icon in VS Code’s left Activity Bar and select **New Project**. You can also run **Project Wizard: New Project** from the Command Palette.
 2. Choose a project category and language, select a template, and enter a **Name** and **Location**. The location is the parent of the new project folder.
 3. Set any **Project setup** options, choose where to open the result, and click **Create Project**.
 

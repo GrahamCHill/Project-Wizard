@@ -1,4 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
+# Populate dependencies without a separate generator cache on CMake 3.30+.
+if(POLICY CMP0168)
+    cmake_policy(SET CMP0168 NEW)
+endif()
 project(__PROJECT_IDENTIFIER__ LANGUAGES CXX)
 
 add_executable(app WIN32 MACOSX_BUNDLE src/main.cpp)

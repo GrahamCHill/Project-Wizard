@@ -622,6 +622,7 @@ function activate(context) {
     output,
     vscode.commands.registerCommand('projectWizard.newProject', uri =>
       openWizard(uri, uri && folderPath(uri) && vscode.workspace.getWorkspaceFolder(uri) ? 'workspace' : undefined)),
+    vscode.window.registerTreeDataProvider('projectWizard.launcher', { getChildren: () => [] }),
     vscode.commands.registerCommand('projectWizard.newProjectInWorkspace', async () => {
       const folders = vscode.workspace.workspaceFolders || [];
       if (!folders.length) {

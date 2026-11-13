@@ -2,7 +2,7 @@
   "name": "project-wizard",
   "displayName": "Project Wizard",
   "description": "Create CLI, desktop, mobile, web, and game projects with local toolchain detection and custom ZIP templates.",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -31,6 +31,29 @@
     "virtualWorkspaces": false
   },
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "project-wizard",
+          "title": "Project Wizard",
+          "icon": "media/project-wizard.svg"
+        }
+      ]
+    },
+    "views": {
+      "project-wizard": [
+        {
+          "id": "projectWizard.launcher",
+          "name": "Project Wizard"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "projectWizard.launcher",
+        "contents": "[New Project](command:projectWizard.newProject)"
+      }
+    ],
     "commands": [
       {
         "command": "projectWizard.newProject",

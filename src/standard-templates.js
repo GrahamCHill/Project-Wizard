@@ -185,7 +185,7 @@ const standardTemplates = [
     ['cmake', 'cpp-compiler'], ['CMakeLists.txt', 'src/main.cpp', 'gitignore'],
     [cmakeBuild[0], 'cmake --build build --config Debug --target app'],
     { cmakeTarget: 'app', platformTools: { linux: ['wx-gtk'] },
-      note: 'CMake uses an installed wxWidgets SDK or downloads wxWidgets 3.2.10 on the first configure. Pass `-DPROJECT_USE_SYSTEM_WXWIDGETS=OFF` to use the bundled source build. On Linux, install the wxWidgets development package or the GTK 3 development files. On Windows, use Developer PowerShell for Visual Studio if CMake is installed with Visual Studio. ' + cmakeRun }),
+      note: 'CMake uses an installed wxWidgets SDK or downloads wxWidgets 3.2.10 on the first configure. Pass `-DPROJECT_USE_SYSTEM_WXWIDGETS=OFF` to use the bundled source build. On Linux, install the wxWidgets development package or the GTK 3 development files. On Windows, use Developer PowerShell for Visual Studio if CMake is installed with Visual Studio. Use a fresh build directory when switching CMake generators or architectures. ' + cmakeRun }),
   gtkStarter(false),
   gtkStarter(true),
   starter('electron', 'desktop', 'JavaScript', 'Electron Desktop', 'An Electron window with an isolated renderer, a preload bridge, and Forge packaging.',

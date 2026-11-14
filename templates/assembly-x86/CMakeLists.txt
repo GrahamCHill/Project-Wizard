@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.24)
+project(__PROJECT_IDENTIFIER__ LANGUAGES C)
+
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+    message(FATAL_ERROR "Choose the 32-bit compiler settings in README.md and configure a fresh build directory.")
+endif()
+if(WIN32)
+    set(CMAKE_ASM_NASM_OBJECT_FORMAT win32)
+else()
+    set(CMAKE_ASM_NASM_OBJECT_FORMAT elf32)
+endif()
+enable_language(ASM_NASM)
+
+set(ASSEMBLY_SOURCE src/add.asm)
+include(cmake/AssemblyApp.cmake)

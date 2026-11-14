@@ -401,7 +401,7 @@ function activate(context) {
       detected: Object.entries(detected).filter(([id, result]) =>
         !['vite-node', 'expo-node', 'react-native-node', 'next-node', 'nuxt-node', 'electron-node',
           'android-gradle', 'android-xr-gradle', 'compose-gradle', 'java-17', 'kmp-gradle',
-          'godot-rust', 'laravel-php', 'ml-python', 'cmake-3.28', 'sfml2-desktop'].includes(id) && result)
+          'godot-rust', 'laravel-php', 'ml-python', 'cmake-3.26', 'cmake-3.28', 'sfml2-desktop'].includes(id) && result)
         .map(([id, result]) => ({ label: toolchains[id].label, ...result }))
         .sort((a, b) => a.label.localeCompare(b.label)),
       sdkVersion: sdk.version, sdkError: sdk.error, monoError, monoCount: mono.length,

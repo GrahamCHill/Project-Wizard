@@ -695,13 +695,27 @@ test('offers assembly for matching architectures and kernel modules on Linux onl
   const root = await fixture(t);
   const systems = starters.filter(template => template.group === 'systems');
   const idsFor = (platform, architecture) => templatesForPlatform(systems, platform, architecture).map(template => template.id);
-  assert.deepEqual(idsFor('win32', 'x64'), ['assembly-x64']);
-  assert.deepEqual(idsFor('darwin', 'arm64'), ['assembly-arm64']);
-  assert.deepEqual(idsFor('linux', 'arm64'), ['assembly-arm64', 'linux-kernel-hello', 'linux-kernel-chardev']);
+  const boards = ['assembly-pico', 'assembly-arduino', 'assembly-esp32', 'assembly-zephyr'];
+  const pi = 'assembly-raspberry-pi';
+  assert.deepEqual(idsFor('win32', 'x64'), ['assembly-x86', 'assembly-x64', 'assembly-arm64-windows', pi, ...boards]);
+  assert.deepEqual(idsFor('win32', 'arm64'), ['assembly-arm64-windows', pi, ...boards]);
+  assert.deepEqual(idsFor('darwin', 'arm64'), ['assembly-arm64', pi, ...boards]);
+  assert.deepEqual(idsFor('linux', 'arm64'), ['assembly-arm64', pi, ...boards, 'linux-kernel-hello', 'linux-kernel-chardev']);
   const tools = { cmake: {}, 'c-compiler': {}, nasm: {}, 'gnu-make': {} };
   for (const template of systems) {
-    const project = await createProject(root, template.id, (target, parent) => writeStarter(template, template.id, target, parent));
-    if (template.language === 'Assembly') {
+    const name = template.id + ' Sample';
+    const project = await createProject(root, name, (target, parent) => writeStarter(template, name, target, parent));
+    const readme = await fs.readFile(path.join(project, 'README.md'), 'utf8');
+    assert.ok(readme.startsWith('# ' + name));
+    if (boards.includes(template.id)) {
+      for (const tool of template.tools) assert.ok(getSetup(tool, 'linux')?.url);
+      assert.match(readme, /## Build|## Install the toolchain/);
+      const assembly = template.id === 'assembly-arduino' ? 'sketch/AssemblyBlink/add.S' :
+        template.id === 'assembly-esp32' ? 'main/add.S' : 'src/add.S';
+      assert.match(await fs.readFile(path.join(project, assembly), 'utf8'), /assembly_add/);
+    } else if (template.language === 'Assembly') {
+      assert.match(readme, /cmake --build/);
+      assert.match(readme, /ctest --test-dir/);
       assert.match(await fs.readFile(path.join(project, 'tests/test_add.c'), 'utf8'), /assembly_add\(7, -3\)/);
       assert.match(await fs.readFile(path.join(project, 'cmake/AssemblyApp.cmake'), 'utf8'), /add_test\(NAME assembly_add/);
     } else {

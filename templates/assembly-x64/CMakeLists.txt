@@ -1,5 +1,17 @@
 cmake_minimum_required(VERSION 3.24)
-project(__PROJECT_IDENTIFIER__ LANGUAGES C ASM_NASM)
+project(__PROJECT_IDENTIFIER__ LANGUAGES C)
+
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "Choose the x86-64 compiler settings in README.md and configure a fresh build directory.")
+endif()
+if(WIN32)
+    set(CMAKE_ASM_NASM_OBJECT_FORMAT win64)
+elseif(APPLE)
+    set(CMAKE_ASM_NASM_OBJECT_FORMAT macho64)
+else()
+    set(CMAKE_ASM_NASM_OBJECT_FORMAT elf64)
+endif()
+enable_language(ASM_NASM)
 
 set(ASSEMBLY_SOURCE src/add.asm)
 include(cmake/AssemblyApp.cmake)

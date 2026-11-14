@@ -45,7 +45,7 @@ LaTeX templates are off by default. Select **Enable LaTeX templates** and save t
 | Category | Examples |
 | --- | --- |
 | Command line | C and C++ with CMake, CUDA kernel and library, Dart, Python, Ruby, PHP, Lua, Rust, Go, Swift, Java, Kotlin/JVM, Zig, and .NET |
-| Systems | x86-64 NASM for Windows, Linux, and Intel macOS, ARM64 assembly for Linux and Apple silicon macOS, and Linux kernel modules |
+| Systems | x86 and x86-64 NASM, ARM64 assembly for Windows, Linux, and Apple silicon, Raspberry Pi OS and Pico firmware, Arduino AVR, ESP32, STM32 and Nordic with Zephyr, and Linux kernel modules |
 | Desktop | Qt, wxWidgets, GTK, GTKmm, and C++ + Lua with CMake, plus Flutter, Tauri, Electron, Python Tkinter, Java and Kotlin Swing, macOS SwiftUI and AppKit, and Windows Forms |
 | Mobile | React Native with Expo or the Community CLI, Android Jetpack Compose, iOS SwiftUI, and Flutter for Android and iOS |
 | Graphics | SFML and SFML + Dear ImGui in C++, SDL2 and SDL3 in C and C++, mixed C# + C++ + Lua SDL3 with Vulkan, OpenGL, or DirectX 11, and LÖVE for Lua |
@@ -61,7 +61,22 @@ LaTeX templates are off by default. Select **Enable LaTeX templates** and save t
 
 The generated README provides build and run commands. Use a Qt kit that matches your C++ compiler and set `CMAKE_PREFIX_PATH` to that kit. CUDA projects require the NVIDIA CUDA Toolkit and a supported host compiler. Running a CUDA sample also needs a compatible GPU and driver. Expo uses Node.js 22.13 or newer and a compatible Expo SDK 57 client or development build. [Qt setup](https://doc.qt.io/qt-6/qt-online-installation.html) · [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) · [Expo device setup](https://docs.expo.dev/get-started/set-up-your-environment/)
 
-Under **Systems**, the assembly starters appear on their matching architectures. Both include a C launcher and a CTest example that calls the assembly routine. On Linux, the wizard also offers a module with load and unload hooks and a read-only character device. The modules use GNU Make and the Linux kernel’s kbuild system. The wizard checks for build headers for the running kernel or the prepared build tree set in `KDIR`. The generated READMEs show how to build and try the modules in a Linux VM. [NASM documentation](https://www.nasm.us/docs.html) · [Linux external modules](https://docs.kernel.org/kbuild/modules.html)
+Under **Systems**, each assembly starter generates a README with toolchain setup, build commands, and instructions to run the app or flash a board. Clear **Ready to use** to see starters that need a compiler or board SDK.
+
+| Assembly starter | Target and build |
+| --- | --- |
+| x86 (32-bit NASM) | Windows with `-A Win32` or Linux with a 32-bit compiler and libraries. On x86-64 Linux, configure with `-DCMAKE_C_FLAGS=-m32`. |
+| x86-64 (NASM) | x64 Windows with `-A x64`, x86-64 Linux, and Intel macOS. |
+| ARM64 | Linux or Apple silicon macOS with GCC or Clang. Windows has a separate Visual Studio `armasm64` starter built with `-A ARM64`. |
+| Raspberry Pi OS | Build on a Pi running 64-bit Raspberry Pi OS or cross-compile from Linux with the included AArch64 CMake toolchain file. |
+| Raspberry Pi Pico / Pico 2 | Build Thumb firmware with the Pico SDK and copy the `.uf2` to the board in BOOTSEL mode. |
+| Arduino Uno R3 | Compile and upload the AVR sketch using Arduino CLI or Arduino IDE. |
+| ESP32 / ESP32-C3 | Build and flash with ESP-IDF. The serial output reports the result of the Xtensa or RISC-V routine. |
+| STM32 Nucleo-F401RE / Nordic nRF52840 DK | Use `west build` and `west flash` from a configured Zephyr workspace. |
+
+For the desktop starters, the C launcher and CTest call the same assembly routine. Run `cmake --build build` and `ctest --test-dir build --output-on-failure` after configuring. With Visual Studio, add `--config Debug` to the build and `-C Debug` to CTest. The board examples check the assembly result on startup. [NASM](https://www.nasm.us/docs.html) · [Pico SDK](https://www.raspberrypi.com/documentation/microcontrollers/c_sdk.html) · [Arduino CLI](https://arduino.github.io/arduino-cli/latest/getting-started/) · [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/get-started/index.html) · [Zephyr](https://docs.zephyrproject.org/latest/develop/getting_started/index.html)
+
+On Linux, the wizard also offers a kernel module with load and unload hooks and a read-only character device. The modules use GNU Make and kbuild. The wizard checks for build headers for the running kernel or the prepared build tree set in `KDIR`. [Linux external modules](https://docs.kernel.org/kbuild/modules.html)
 
 The CMake desktop starters, including SDL2, SDL3, and their OpenGL and Vulkan variants, include a `distribution` build target. Configure a Release build and run `cmake --build build --config Release --target distribution` to collect the app and its runtime libraries in `build/dist/Release/`. Share the entire folder for the target OS and architecture. Windows Vulkan packages include the loader. The macOS packaging step copies linked dylibs and frameworks into the `.app`, rewrites their paths, and adds MoltenVK for Vulkan apps. Graphics drivers and OS libraries come from the destination system. Other desktop starters provide packaging commands for their toolchains in the generated README. [CMake BundleUtilities](https://cmake.org/cmake/help/latest/module/BundleUtilities.html)
 

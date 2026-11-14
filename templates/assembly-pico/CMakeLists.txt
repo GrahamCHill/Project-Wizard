@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.24)
+
+set(PICO_BOARD pico CACHE STRING "Raspberry Pi Pico board (pico or pico2)")
+set_property(CACHE PICO_BOARD PROPERTY STRINGS pico pico2)
+set(PICO_SDK_PATH "$ENV{PICO_SDK_PATH}" CACHE PATH "Raspberry Pi Pico SDK checkout")
+if(NOT EXISTS "${PICO_SDK_PATH}/external/pico_sdk_import.cmake")
+    message(FATAL_ERROR "Set PICO_SDK_PATH to the Pico SDK checkout, as shown in README.md.")
+endif()
+include("${PICO_SDK_PATH}/external/pico_sdk_import.cmake")
+
+project(__PROJECT_IDENTIFIER__ LANGUAGES C CXX ASM)
+if(NOT PICO_BOARD STREQUAL "pico" AND NOT PICO_BOARD STREQUAL "pico2")
+    message(FATAL_ERROR "Choose pico or pico2 for the onboard GPIO LED example.")
+endif()
+pico_sdk_init()
+
+add_executable(assembly_blink src/main.c src/add.S)
+target_include_directories(assembly_blink PRIVATE include)
+target_link_libraries(assembly_blink PRIVATE pico_stdlib)
+pico_add_extra_outputs(assembly_blink)

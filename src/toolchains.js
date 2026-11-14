@@ -294,6 +294,55 @@ const toolchains = {
     instructions: 'Install NASM and add it to PATH. On Linux, use your distribution’s nasm package.',
     windows: 'winget install --exact --id NASM.NASM', macos: 'brew install nasm'
   },
+  'cmake-3.26': {
+    label: 'CMake 3.26+', url: 'https://cmake.org/download/',
+    instructions: 'Install CMake 3.26 or newer for the Microsoft ARM assembler integration.'
+  },
+  'x86-c-compiler': {
+    label: '32-bit x86 C toolchain', url: 'https://gcc.gnu.org/install/',
+    instructions: 'Install a compiler and the 32-bit C headers and libraries. On x86-64 Debian or Ubuntu, install gcc-multilib and libc6-dev-i386.'
+  },
+  'arm64-visual-studio': {
+    label: 'Visual Studio ARM64 build tools', url: 'https://learn.microsoft.com/en-us/cpp/assembler/arm/arm-assembler-reference',
+    instructions: 'Install Visual Studio or Build Tools with MSVC ARM64 C++ build tools and a Windows SDK. This provides armasm64.'
+  },
+  'pi-arm64-compiler': {
+    label: 'Raspberry Pi ARM64 C toolchain', url: 'https://www.raspberrypi.com/software/operating-systems/',
+    instructions: {
+      linux: 'Build with a native compiler on 64-bit Raspberry Pi OS, or install gcc-aarch64-linux-gnu and libc6-dev-arm64-cross for a Linux cross-build.',
+      win32: 'Build in WSL using the generated Linux cross-build commands, or open the project on your Raspberry Pi over SSH.',
+      darwin: 'Open the project on your Raspberry Pi over SSH or use a Debian or Ubuntu VM for the Linux cross-build.'
+    }
+  },
+  ninja: {
+    label: 'Ninja', url: 'https://ninja-build.org/',
+    instructions: 'Install Ninja and make it available on PATH.',
+    windows: 'winget install --exact --id Ninja-build.Ninja', macos: 'brew install ninja'
+  },
+  'pico-sdk': {
+    label: 'Raspberry Pi Pico SDK', url: 'https://www.raspberrypi.com/documentation/microcontrollers/c_sdk.html',
+    instructions: 'Install Pico SDK 2.x and set PICO_SDK_PATH to its folder before opening VS Code. The starter README also shows how to pass the SDK path to CMake.'
+  },
+  'arm-none-eabi': {
+    label: 'GNU Arm Embedded toolchain', url: 'https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads',
+    instructions: 'Install the arm-none-eabi GCC and G++ tools with Newlib. Put the toolchain bin folder on PATH or set PICO_TOOLCHAIN_PATH.'
+  },
+  'arduino-cli': {
+    label: 'Arduino CLI', url: 'https://arduino.github.io/arduino-cli/latest/installation/',
+    instructions: 'Install Arduino CLI and put it on PATH.', macos: 'brew install arduino-cli'
+  },
+  'arduino-avr': {
+    label: 'Arduino AVR Boards', url: 'https://arduino.github.io/arduino-cli/latest/getting-started/',
+    instructions: 'Run arduino-cli core update-index and arduino-cli core install arduino:avr using Arduino CLI.'
+  },
+  'esp-idf': {
+    label: 'ESP-IDF', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/get-started/index.html',
+    instructions: 'Install ESP-IDF and tools for ESP32 or ESP32-C3. Activate the SDK environment and open VS Code from that shell.'
+  },
+  zephyr: {
+    label: 'Zephyr workspace and ARM SDK', url: 'https://docs.zephyrproject.org/latest/develop/getting_started/index.html',
+    instructions: 'Set up a west workspace and the Zephyr SDK with ARM support. Activate the workspace Python environment and set ZEPHYR_BASE to the Zephyr source folder before starting VS Code. If needed, set ZEPHYR_SDK_INSTALL_DIR to the SDK folder.'
+  },
   'gnu-make': {
     label: 'GNU Make', url: 'https://www.gnu.org/software/make/',
     instructions: 'Install your Linux distribution’s GNU Make package.'
@@ -514,15 +563,76 @@ async function findAppleSdk(settings) {
   if (/^\d+(?:\.\d+)+$/.test(version)) return { version, file: '/usr/bin/xcrun' };
 }
 
-async function findVisualStudio(settings) {
+async function findVisualStudio(settings, target = 'x86.x64') {
   if (settings.platform !== 'win32') return;
   const root = settings.env['ProgramFiles(x86)'];
   if (!root) return;
   const file = path.join(root, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe');
   const installation = await commandOutput(file, [
-    '-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'
+    '-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.' + target, '-property', 'installationPath'
   ], settings).catch(() => '');
   if (path.isAbsolute(installation)) return { file, installation };
+}
+
+async function executableLibrary(tool, flags, name, settings) {
+  if (!tool) return false;
+  const file = await commandOutput(tool.file, [...flags, '-print-file-name=' + name], settings).catch(() => '');
+  return path.isAbsolute(file) && fs.access(file).then(() => true, () => false);
+}
+
+async function findBoardTools(settings, probe, directories, compiler) {
+  const { env, home, platform, architecture = process.arch } = settings;
+  const isLinux = platform === 'linux';
+  const accessible = file => fs.access(file).then(() => true, () => false);
+  const version = /(\d+\.\d+(?:\.\d+)?)/;
+  const picoBin = env.PICO_TOOLCHAIN_PATH && path.join(env.PICO_TOOLCHAIN_PATH, 'bin');
+  const [ninja, arduino, arm, armCpp, piCross, vsArm, west, idfCompiler] = await Promise.all([
+    probe(['ninja'], ['--version'], version),
+    probe(['arduino-cli'], ['version'], /\bVersion:\s*(\d+\.\d+(?:\.\d+)?)/i),
+    probe(['arm-none-eabi-gcc'], ['--version'], version, [picoBin, env.PICO_TOOLCHAIN_PATH]),
+    probe(['arm-none-eabi-g++'], ['--version'], version, [picoBin, env.PICO_TOOLCHAIN_PATH]),
+    isLinux && architecture !== 'arm64' ? probe(['aarch64-linux-gnu-gcc'], ['--version'], version) : undefined,
+    findVisualStudio(settings, 'ARM64'),
+    probe(['west'], ['--version'], version),
+    env.IDF_PATH ? probe(['riscv32-esp-elf-gcc', 'xtensa-esp-elf-gcc', 'xtensa-esp32-elf-gcc'], ['--version'], version) : undefined
+  ]);
+  const sdk = env.PICO_SDK_PATH;
+  const picoConfig = sdk ? await fs.readFile(path.join(sdk, 'pico_sdk_version.cmake'), 'utf8').catch(() => '') : '';
+  const picoVersion = ['MAJOR', 'MINOR', 'REVISION'].map(part =>
+    picoConfig.match(new RegExp(`set\\(PICO_SDK_VERSION_${part}\\s+(\\d+)\\)`))?.[1]);
+  const coreList = arduino && await commandOutput(arduino.file, ['core', 'list'], settings).catch(() => '');
+  const avrVersion = coreList && coreList.match(/^arduino:avr\s+(\S+)/m)?.[1];
+  const zephyr = env.ZEPHYR_BASE || path.join(home, 'zephyrproject', 'zephyr');
+  const zephyrVersion = west && await fs.readFile(path.join(zephyr, 'VERSION'), 'utf8').catch(() => '');
+  const zephyrSdks = env.ZEPHYR_SDK_INSTALL_DIR ? [env.ZEPHYR_SDK_INSTALL_DIR] : west && zephyrVersion ? [
+    ...await subdirectories(home, ''), ...await subdirectories(path.join(home, '.local'), ''),
+    ...await subdirectories('/opt', '')
+  ].filter(folder => path.basename(folder).startsWith('zephyr-sdk-')) : [];
+  const zephyrArm = west && zephyrVersion && (await Promise.all(zephyrSdks.map(folder =>
+    candidates(['arm-zephyr-eabi-gcc'], [path.join(folder, 'arm-zephyr-eabi', 'bin')], platform)))).some(files => files.length);
+  const idf = idfCompiler && path.join(env.IDF_PATH, 'tools', 'idf.py');
+  const idfPython = env.IDF_PYTHON_ENV_PATH && path.join(env.IDF_PYTHON_ENV_PATH, platform === 'win32' ? 'Scripts' : 'bin');
+  const python = idf && (await candidates(['python3', 'python'], directories(idfPython), platform)).find(file => !/\.(?:cmd|bat)$/i.test(file));
+  const [armLib, armCppLib, piLib, x86Lib, idfVersion] = await Promise.all([
+    executableLibrary(arm, ['-mcpu=cortex-m0plus', '-mthumb'], 'libc.a', settings),
+    executableLibrary(armCpp, ['-mcpu=cortex-m0plus', '-mthumb'], 'libstdc++.a', settings),
+    executableLibrary(piCross, [], 'crt1.o', settings),
+    isLinux && ['ia32', 'x64'].includes(architecture) && executableLibrary(compiler, ['-m32'], 'crt1.o', settings),
+    python && await accessible(idf) ? commandOutput(python, [idf, '--version'], settings).catch(() => '') : undefined
+  ]);
+  return {
+    ninja,
+    'x86-c-compiler': x86Lib ? compiler : undefined,
+    'arm64-visual-studio': vsArm && { version: 'MSVC ARM64', file: vsArm.installation },
+    'pi-arm64-compiler': isLinux && architecture === 'arm64' ? compiler : piLib ? piCross : undefined,
+    'pico-sdk': picoVersion.every(Boolean) && Number(picoVersion[0]) >= 2 &&
+      await accessible(path.join(sdk, 'external', 'pico_sdk_import.cmake')) ? { version: picoVersion.join('.'), file: sdk } : undefined,
+    'arm-none-eabi': armLib && armCppLib ? arm : undefined,
+    'arduino-cli': arduino,
+    'arduino-avr': avrVersion ? { version: avrVersion, file: arduino.file } : undefined,
+    'esp-idf': idfVersion?.match(/\bESP-IDF\s+v?(\d+\.\d+(?:\.\d+)?)/i) ? { version: idfVersion, file: idf } : undefined,
+    zephyr: zephyrArm ? { version: 'ARM SDK', file: zephyr } : undefined
+  };
 }
 
 async function findPackageManager(dirs, platform) {
@@ -808,7 +918,7 @@ async function detectToolchains(settings = system) {
     const required = await Promise.all([compilerName, 'ninja', 'cmake'].map(name => candidates([name], [tools], platform)));
     return required.every(files => files.length) ? kit : undefined;
   };
-  const [[wx, gtk, x11, wayland, gl], [xrandr, xcursor, udev, freetype, xi, harfbuzz], gtk4, gtkmm, webkit, ssl, webView, editors, supplemental] = await Promise.all([
+  const [[wx, gtk, x11, wayland, gl], [xrandr, xcursor, udev, freetype, xi, harfbuzz], gtk4, gtkmm, webkit, ssl, webView, editors, supplemental, boards] = await Promise.all([
     linuxGraphics,
     platform === 'linux' ? Promise.all(['xrandr', 'xcursor', 'libudev', 'freetype2', 'xi', 'harfbuzz'].map(pkgConfig)) : [],
     gtkKit('gtk4', 'gcc'), gtkKit('gtkmm-4.0', 'g++'),
@@ -816,7 +926,8 @@ async function detectToolchains(settings = system) {
     platform === 'linux' ? pkgConfig('openssl') : undefined,
     windows && studio ? findWebView(settings) : undefined,
     findGameEditors(settings, probe),
-    findSupplementalTools(settings, probe, directories, appleSdk)
+    findSupplementalTools(settings, probe, directories, appleSdk),
+    findBoardTools(settings, probe, directories, compiler)
   ]);
   const sfml = x11 && gl && xrandr && xcursor && udev && freetype ? { version: 'X11 / OpenGL', file: x11.file } : undefined;
   const results = {
@@ -858,6 +969,7 @@ async function detectToolchains(settings = system) {
     gtk4, 'gtkmm-4.0': gtkmm,
     npm,
     cmake: requireVersion(cmake, 3, 24),
+    'cmake-3.26': requireVersion(cmake, 3, 26),
     'cmake-3.28': requireVersion(cmake, 3, 28),
     nasm, 'gnu-make': make, 'linux-kernel-headers': kernelHeaders,
     'c-compiler': systemCompiler || compiler,
@@ -871,7 +983,8 @@ async function detectToolchains(settings = system) {
     cuda,
     ...qt,
     ...editors,
-    ...supplemental
+    ...supplemental,
+    ...boards
   };
   return { results, manager, pythonVersions };
 }

@@ -1,4 +1,4 @@
-import QtQuick
+__QT_QML_IMPORTS__
 
 Window {
     width: 480

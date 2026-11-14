@@ -1,25 +1,35 @@
-const sdlMixedStarters = [
+const mixedRenderers = [
   ['vulkan', 'Vulkan', 'vulkan', 'Install a Vulkan driver and loader. On macOS, use the Vulkan SDK with MoltenVK.'],
   ['opengl', 'OpenGL', 'opengl', 'Use a system OpenGL driver and the SDL desktop build prerequisites.'],
-  ['directx', 'DirectX 11', 'direct3d11', 'Use Windows with a Direct3D 11-capable graphics driver.']
-].map(([id, label, driver, note]) => ({
-  id: `sdl3-${id}-csharp-cpp-lua`, group: 'graphics', kind: 'starter', language: 'C#',
-  label: `SDL3 + ${label} (C# + C++ + Lua)`,
+  ['dx11', 'DirectX 11', 'direct3d11', 'Use Windows with a Direct3D 11-capable graphics driver.'],
+  ['dx12', 'DirectX 12', 'direct3d12', 'Use Windows with a Direct3D 12-capable graphics driver.']
+].map(([id, label, driver, note]) => ({ id, label, driver, note,
+  ...(id.startsWith('dx') ? { platforms: ['win32'], tools: ['windows-directx-sdk'] } :
+    { platformTools: { linux: ['sdl-desktop', ...(id === 'opengl' ? ['opengl-dev'] : [])] } })
+}));
+
+const sdlMixedStarter = {
+  id: 'mixed-graphics-csharp-cpp-lua', group: 'graphics', kind: 'starter', language: 'C#',
+  label: 'C# + C++ + Lua Graphics',
   description: 'A C# app loop, an SDL renderer in C++, and Lua behavior that reloads while the window is open.',
-  needsSdk: true, nativeTarget: 'pw_native', sdlVersion: '3.4.16', sourceDirectory: 'sdl-csharp-lua',
-  sdlBackend: driver, sdlBackendLabel: label, sdlBackendNote: note,
+  needsSdk: true, nativeTarget: 'pw_native', sdlMixed: true, sourceDirectory: 'sdl-csharp-lua',
   tools: ['dotnet', 'cmake', 'c-compiler', 'cpp-compiler'],
-  ...(id === 'directx' ? { platforms: ['win32'] } : { platformTools: { linux: ['sdl-desktop', ...(id === 'opengl' ? ['opengl-dev'] : [])] } }),
-  requirement: `.NET SDK 8+, CMake 3.24+, and a native C/C++ compiler. ${note}`,
+  requirement: '.NET SDK 8+, CMake 3.24+, and a native C/C++ compiler.',
   next: 'Run dotnet run from the project folder.',
   files: ['__PROJECT_NAME__.csproj', 'Program.cs', 'NativeScene.cs', 'native/CMakeLists.txt', 'native/src/scene.cpp',
     'native/cmake/FixBundle.cmake', 'native/README.md', 'scripts/behavior.lua', 'gitignore', 'README.md'],
   sharedFiles: {
     'native/BuildNative.targets': 'native/BuildNative.targets',
-    'native/Lua.cmake': 'native/cmake/Lua.cmake',
-    ...(id === 'vulkan' ? { 'native-distribution/VulkanRuntime.cmake.in': 'native/cmake/VulkanRuntime.cmake.in' } : {})
+    'native/Lua.cmake': 'native/cmake/Lua.cmake'
   }
-}));
+};
+
+function resolveMixedSdl(template, options) {
+  const renderer = mixedRenderers.find(renderer => renderer.id === options.renderer) || mixedRenderers[0];
+  return { ...template, sdlBackend: renderer.driver, sdlBackendLabel: renderer.label, sdlBackendNote: renderer.note,
+    sharedFiles: { ...template.sharedFiles, ...(renderer.id === 'vulkan' ?
+      { 'native-distribution/VulkanRuntime.cmake.in': 'native/cmake/VulkanRuntime.cmake.in' } : {}) } };
+}
 
 const nativePluginFiles = {
   'native/PluginHost.cmake': 'cmake/PluginHost.cmake',
@@ -58,4 +68,4 @@ const pluginStarters = [
   }
 ];
 
-module.exports = { sdlMixedStarters, pluginStarters };
+module.exports = { sdlMixedStarter, mixedRenderers, resolveMixedSdl, pluginStarters };

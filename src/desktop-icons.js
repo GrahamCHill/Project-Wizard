@@ -212,7 +212,9 @@ async function macBundle(project, template, name, icon, manifest) {
   ] : template.id === 'swift-desktop' ? [
     'swift build -c release',
     'cp "$(swift build -c release --show-bin-path)/App" "$app/Contents/MacOS/App"'
-  ] : ['xcrun --sdk macosx clang -fobjc-arc main.m -framework AppKit -o "$app/Contents/MacOS/App"'];
+  ] : [template.id === 'objc-cpp-desktop' ?
+    'xcrun --sdk macosx clang++ -std=c++17 -fobjc-arc main.mm counter.cpp -framework AppKit -o "$app/Contents/MacOS/App"' :
+    'xcrun --sdk macosx clang -fobjc-arc main.m -framework AppKit -o "$app/Contents/MacOS/App"'];
   const plist = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
@@ -413,7 +415,7 @@ async function configureDesktopApp(project, template, name, options, icons, rast
   if (template.kind === 'dotnet' || template.sdlBackend || (template.language === 'C#' && template.group === 'raylib')) {
     return dotnetIcons(project, template, name, icons);
   }
-  if (['swift-desktop', 'objc-desktop'].includes(template.id)) return macBundle(project, template, name, icons.has('.icns'));
+  if (['swift-desktop', 'objc-desktop', 'objc-cpp-desktop'].includes(template.id)) return macBundle(project, template, name, icons.has('.icns'));
 }
 
 module.exports = { configureDesktopApp };

@@ -4,10 +4,11 @@ const { getSdk, replaceTokens } = require('./projects');
 const { standardTemplates } = require('./standard-templates');
 const { generators } = require('./npm-generators');
 const { externalGenerators } = require('./external-generators');
-const { sdlMixedStarters, pluginStarters } = require('./mixed-starters');
+const { sdlMixedStarter, resolveMixedSdl, pluginStarters } = require('./mixed-starters');
 const { systemsStarters } = require('./systems-starters');
 const { renderSfml } = require('./sfml');
-const { renderSdl, sdlVersion } = require('./sdl');
+const { renderSdl, resolveSdl, sdlStarter, sdlVersion } = require('./sdl');
+const { qtStarter, renderQt, resolveQt } = require('./qt');
 const { wailsStarter } = require('./wails');
 const { dockerStarters, resolveDockerStarter } = require('./docker-starters');
 
@@ -71,7 +72,9 @@ const starters = [
     description: 'A native Windows desktop application using Windows Forms.',
     requirement: 'Windows with .NET SDK 8 or newer.', next: 'Run dotnet run from the project folder.'
   },
-  ...sdlMixedStarters,
+  sdlMixedStarter,
+  sdlStarter,
+  qtStarter,
   {
     ...sfmlStarter, id: 'sfml-cpp', label: 'SFML',
     description: 'A resizable SFML window with a shape you can move with the arrow keys.'
@@ -95,13 +98,16 @@ const starters = [
 
 async function writeStarter(template, name, project, parent, log, tools = {}, options = {}) {
   if (template.docker) template = resolveDockerStarter(template, options.build);
+  if (template.sdl) template = resolveSdl(template, options);
+  if (template.sdlMixed) template = resolveMixedSdl(template, options);
+  if (template.qt) template = resolveQt(template, options);
   const sdk = template.needsSdk ? await getSdk(parent, log) : undefined;
   const sdl = template.sdl && sdlVersion(options.build);
-  const sourceDirectory = template.sourceDirectory || (sdl ? sdl.id + '-c' : template.id);
+  const sourceDirectory = template.sourceDirectory || template.id;
   const templateRoot = path.join(__dirname, '..', 'templates', sourceDirectory);
   const cpp = template.language === 'C++';
   const moduleName = 'Game' + name.replace(/[^A-Za-z0-9]/g, '').slice(0, 48);
-  const renderTokens = text => replaceTokens(template.sfml ? renderSfml(text, options.build) : text, name, sdk?.major)
+  const renderTokens = text => replaceTokens(template.sfml ? renderSfml(text, options.build) : template.qt ? renderQt(text, template) : text, name, sdk?.major)
     .replaceAll('__UNITY_VERSION__', tools['unity-editor']?.editorVersion || '6000.3.0f1')
     .replaceAll('__UNREAL_ASSOCIATION__', tools['unreal-editor']?.association || '')
     .replaceAll('__UNREAL_MODULE__', moduleName)
@@ -117,7 +123,7 @@ async function writeStarter(template, name, project, parent, log, tools = {}, op
     const rendered = file === 'CMakeLists.txt' ? contents.replaceAll('__CMAKE_LANGUAGE__', cpp ? 'CXX' : 'C')
       .replaceAll('__NATIVE_EXTENSION__', cpp ? 'cpp' : 'c').replaceAll('__NATIVE_STANDARD__', cpp ? 'cxx_std_17' : 'c_std_99') : contents;
     const source = rendered.replaceAll('__NATIVE_LABEL__', cpp ? 'C++' : 'C');
-    await fs.writeFile(target, renderTokens(sdl ? renderSdl(source, sdl) : source), { flag: 'wx' });
+    await fs.writeFile(target, renderTokens(sdl ? renderSdl(source, sdl, template.renderer) : source), { flag: 'wx' });
   }
   for (const [file, output] of Object.entries(template.sharedFiles || {})) {
     const source = await readStarterText(path.join(__dirname, '..', 'templates', '_shared', file));
@@ -141,9 +147,8 @@ ${template.androidCmake ? `if(ANDROID)\n    ${link}\nendif()` : link}
 `);
   }
   if (template.commands) {
-    const note = sdl ? 'This project uses SDL ' + sdl.version + '. ' + template.note : template.note;
     await fs.writeFile(path.join(project, 'README.md'),
-      starterReadme(name, template.description, template.commands, note), { flag: 'wx' });
+      starterReadme(name, template.description, template.commands, template.note), { flag: 'wx' });
   }
 }
 

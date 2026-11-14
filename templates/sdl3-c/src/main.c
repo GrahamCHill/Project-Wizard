@@ -12,11 +12,16 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    SDL_Window *window = NULL;
-    SDL_Renderer *renderer = NULL;
-    if (!SDL_CreateWindowAndRenderer("__PROJECT_NAME__", 800, 450,
-                                     SDL_WINDOW_RESIZABLE, &window, &renderer)) {
-        fprintf(stderr, "SDL_CreateWindowAndRenderer: %s\n", SDL_GetError());
+    SDL_Window *window = SDL_CreateWindow("__PROJECT_NAME__", 800, 450, SDL_WINDOW_RESIZABLE);
+    if (!window) {
+        fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, __SDL_RENDER_DRIVER__);
+    if (!renderer) {
+        fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
+        SDL_DestroyWindow(window);
         SDL_Quit();
         return 1;
     }

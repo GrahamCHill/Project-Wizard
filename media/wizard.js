@@ -11,6 +11,8 @@ const openMode = byId('open-mode');
 const initializeGit = byId('initialize-git');
 const projectSetup = byId('project-options');
 const buildChoiceSelect = byId('build-choice');
+const rendererChoiceSelect = byId('renderer-choice');
+const projectLanguageSelect = byId('project-language-choice');
 const targetChoices = byId('target-choices');
 const executableIcon = byId('executable-icon');
 const environmentSelect = byId('python-environment');
@@ -80,6 +82,7 @@ function openSettings() {
   };
   byId('settings-error').hidden = true;
   byId('open-on-startup').checked = settings.openOnStartup;
+  byId('hide-unavailable').checked = settings.hideUnavailableTemplates;
   byId('enable-vr').checked = settings.enableVrTemplates;
   byId('enable-latex').checked = settings.enableLatexTemplates;
   settingsSearch.value = '';
@@ -192,11 +195,48 @@ function updateVersionSuggestions() {
 }
 
 function updateTestFrameworkField() {
-  byId('test-framework-field').hidden = !byId('testing').checked || (optionTemplate?.options?.frameworks?.length || 0) < 2;
+  byId('test-framework-field').hidden = !byId('testing').checked || testFramework.options.length < 2;
+}
+
+function buildChoices() {
+  const options = optionTemplate?.options;
+  return options?.buildsByRenderer?.[rendererChoiceSelect.value] || options?.buildChoice;
 }
 
 function selectedBuild() {
-  return optionTemplate?.options?.buildChoice?.options.find(option => option.id === buildChoiceSelect.value);
+  return buildChoices()?.options.find(option => option.id === buildChoiceSelect.value);
+}
+
+function activeLanguageOptions() {
+  const options = optionTemplate?.options;
+  return options?.languageOptions?.[projectLanguageSelect.value] || options;
+}
+
+function showChoice(select, field, choice, previous) {
+  byId(field).hidden = !choice;
+  if (!choice) return;
+  const ready = choice.options.filter(option => option.ready !== false);
+  const visible = readyOnly.checked && ready.length ? ready : choice.options;
+  select.replaceChildren(...visible.map(option =>
+    new Option(option.label + (option.ready === false ? ' (setup needed)' : ''), option.id)));
+  select.value = visible.some(option => option.id === previous) ? previous :
+    visible.some(option => option.id === choice.defaultId) ? choice.defaultId : visible[0].id;
+}
+
+function updateBuildChoice(previous) {
+  const build = buildChoices();
+  byId('build-choice-label').textContent = build?.label || '';
+  showChoice(buildChoiceSelect, 'build-choice-field', build, previous);
+}
+
+function updateTestOptions(previous) {
+  const options = activeLanguageOptions();
+  byId('testing-option').hidden = !options?.test;
+  byId('testing-label').textContent = options?.test || '';
+  const frameworks = options?.frameworks || [];
+  testFramework.replaceChildren(...frameworks.map(item => new Option(item.label, item.id)));
+  if (frameworks.some(item => item.id === previous)) testFramework.value = previous;
+  updateTestFrameworkField();
 }
 
 function selectedTargets() {
@@ -224,7 +264,7 @@ function updateExecutableIcon(targets) {
 }
 
 function updateDependencyField() {
-  const options = optionTemplate?.options;
+  const options = activeLanguageOptions();
   byId('dependency-options').hidden = !options?.dependencies || (options.type === 'java' && buildChoiceSelect.value === 'jdk');
   const native = !options?.targetChoice || selectedTargets().some(target => target.id === 'native');
   const libraries = options?.libraries?.filter(library => native || !library.desktopOnly) || [];
@@ -234,9 +274,9 @@ function updateDependencyField() {
     ...libraries.map(library => new Option(library.label, library.id)));
 }
 
-function renderProjectOptions(template) {
+function renderProjectOptions(template, refreshChoices = false) {
   projectSetup.hidden = !template?.options;
-  if (optionTemplate === template) return;
+  if (optionTemplate === template && !refreshChoices) return;
   const preserve = optionTemplate?.id === template?.id;
   optionTemplate = template;
   const options = template?.options;
@@ -248,15 +288,10 @@ function renderProjectOptions(template) {
     executableIcon.checked = false;
     pythonVersion.value = '';
   }
-  const build = options.buildChoice;
-  byId('build-choice-field').hidden = !build;
-  if (build) {
-    const previous = preserve ? buildChoiceSelect.value : '';
-    byId('build-choice-label').textContent = build.label;
-    buildChoiceSelect.replaceChildren(...build.options.map(option =>
-      new Option(option.label + (option.ready ? '' : ' (setup needed)'), option.id)));
-    buildChoiceSelect.value = build.options.some(option => option.id === previous) ? previous : build.defaultId;
-  }
+  byId('renderer-choice-label').textContent = options.rendererChoice?.label || '';
+  showChoice(rendererChoiceSelect, 'renderer-choice-field', options.rendererChoice, preserve ? rendererChoiceSelect.value : '');
+  showChoice(projectLanguageSelect, 'language-choice-field', options.languageChoice, preserve ? projectLanguageSelect.value : '');
+  updateBuildChoice(preserve ? buildChoiceSelect.value : '');
   const targets = options.targetChoice;
   byId('target-choice-field').hidden = !targets;
   if (targets) {
@@ -280,19 +315,15 @@ function renderProjectOptions(template) {
   byId('dependency-hint').textContent = options.requiredDependencies?.length ?
     'Included packages: ' + options.requiredDependencies.join(', ') + '. Enter one additional package per line.' :
     options.dependencyHint || 'One dependency per line.';
-  byId('testing-option').hidden = !options.test;
-  byId('testing-label').textContent = options.test || '';
-  const previousFramework = preserve ? testFramework.value : '';
-  const frameworks = options.frameworks || [];
-  testFramework.replaceChildren(...frameworks.map(item => new Option(item.label, item.id)));
-  if (frameworks.some(item => item.id === previousFramework)) testFramework.value = previousFramework;
-  updateTestFrameworkField();
+  updateTestOptions(preserve ? testFramework.value : '');
 }
 
 function selectedOptions() {
   if (!optionTemplate?.options) return;
   return {
     build: selectedBuild()?.id,
+    renderer: optionTemplate.options.rendererChoice ? rendererChoiceSelect.value : undefined,
+    language: optionTemplate.options.languageChoice ? projectLanguageSelect.value : undefined,
     targets: optionTemplate.options.targetChoice ? selectedTargets().map(option => option.id) : undefined,
     executableIcon: !byId('executable-icon-picker').hidden,
     environment: environmentSelect.value,
@@ -315,7 +346,7 @@ function checkGitLocation(delay = 0) {
   }
 }
 
-function updateForm() {
+function updateForm(refreshChoices = false) {
   const template = visibleTemplates.find(item => item.id === selected);
   const location = locationInput.value.trim();
   const name = nameInput.value;
@@ -328,16 +359,20 @@ function updateForm() {
 
   byId('selection').hidden = !template;
   byId('selected-name').textContent = template?.label || '';
-  if (template || !loading || !selected) renderProjectOptions(template);
+  if (template || !loading || !selected) renderProjectOptions(template, refreshChoices);
   else projectSetup.hidden = true;
   const build = template && selectedBuild();
+  const renderer = template?.options?.rendererChoice?.options.find(option => option.id === rendererChoiceSelect.value);
+  const language = template?.options?.languageChoice?.options.find(option => option.id === projectLanguageSelect.value);
   const targets = template ? selectedTargets() : [];
   const hasTargets = Boolean(template?.options?.targetChoice);
-  const requirement = hasTargets ? targets.map(option => option.requirement).filter(Boolean).join(' ') : build?.requirement || template?.requirement;
+  const requirement = hasTargets ? targets.map(option => option.requirement).filter(Boolean).join(' ') :
+    build?.requirement || renderer?.requirement || template?.requirement;
   byId('selected-requirement').textContent = requirement || '';
   byId('selected-requirement').hidden = !requirement;
   const missing = hasTargets ? [...new Map(targets.flatMap(option => option.missing).map(tool => [tool.id, tool])).values()] :
-    build?.missing || template?.missing;
+    [...new Map([...(build?.missing || template?.missing || []), ...(renderer?.missing || []), ...(language?.missing || [])]
+      .map(tool => [tool.id, tool])).values()];
   renderSetup(missing);
   for (const button of list.querySelectorAll('button')) {
     button.setAttribute('aria-pressed', String(button.dataset.id === selected));
@@ -378,6 +413,7 @@ function templateButton(template) {
   const title = document.createElement('span');
   title.className = 'template-title';
   title.textContent = template.label;
+  button.title = template.label;
   button.append(title);
 
   const status = template.ready === false ? 'Setup needed' : '';
@@ -396,7 +432,7 @@ function templateButton(template) {
   return button;
 }
 
-function updateCatalog({ preserveSelection = false } = {}) {
+function updateCatalog({ preserveSelection = false, refreshChoices = false } = {}) {
   const showVr = catalog?.settings.enableVrTemplates === true;
   categories.querySelector('[data-group="vr"]').hidden = !showVr;
   if (!showVr && group === 'vr') group = 'all';
@@ -448,10 +484,13 @@ function updateCatalog({ preserveSelection = false } = {}) {
   else if (query || languageSelect.value) status.textContent = 'No templates match your filters.';
   else if (group === 'zip' && catalog?.zipDirectory && !catalog.zipError) status.textContent = 'No ZIP files in this folder.';
   else if (group === 'monogame' || group === 'zip') status.textContent = '';
+  else if (readyOnly.checked && categoryTemplates.length) status.textContent =
+    group === 'docker' ? 'Docker is unavailable. Clear Ready to use to see the starters and Docker setup guides.' :
+      'Clear Ready to use to show templates that need setup.';
   else if (readyOnly.checked) status.textContent = 'No templates are ready in this category. Clear Ready to use to see setup options.';
   else status.textContent = 'No templates available.';
   status.hidden = !status.textContent;
-  updateForm();
+  updateForm(refreshChoices);
 }
 
 function clearMessage() {
@@ -492,9 +531,18 @@ list.addEventListener('click', event => {
 });
 search.addEventListener('input', updateCatalog);
 languageSelect.addEventListener('change', updateCatalog);
-readyOnly.addEventListener('change', updateCatalog);
+readyOnly.addEventListener('change', () => updateCatalog({ refreshChoices: true }));
 buildChoiceSelect.addEventListener('change', () => {
   updateDependencyField();
+  updateForm();
+});
+rendererChoiceSelect.addEventListener('change', () => {
+  if (optionTemplate?.options?.buildsByRenderer) updateBuildChoice(buildChoiceSelect.value);
+  updateForm();
+});
+projectLanguageSelect.addEventListener('change', () => {
+  updateDependencyField();
+  updateTestOptions();
   updateForm();
 });
 targetChoices.addEventListener('change', () => {
@@ -560,6 +608,7 @@ byId('settings-form').addEventListener('submit', event => {
     disabledTemplates: [...catalogDraft.disabledTemplates].sort(),
     enableVrTemplates: byId('enable-vr').checked,
     enableLatexTemplates: byId('enable-latex').checked,
+    hideUnavailableTemplates: byId('hide-unavailable').checked,
     openOnStartup: byId('open-on-startup').checked
   };
   setSettingsSaving(true);
@@ -597,6 +646,9 @@ window.addEventListener('message', ({ data }) => {
     case 'catalog': {
       const firstCatalog = !catalog;
       const gitChanged = catalog?.gitFile !== data.gitFile;
+      if (firstCatalog || catalog.settings.hideUnavailableTemplates !== data.settings.hideUnavailableTemplates) {
+        readyOnly.checked = data.settings.hideUnavailableTemplates;
+      }
       catalog = data;
       loading = data.refreshing;
       byId('workspace-mode').hidden = !data.hasWorkspace;

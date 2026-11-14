@@ -125,10 +125,11 @@ input::placeholder { color: var(--vscode-input-placeholderForeground); }
 #catalog-status { margin-top: 10px; }
 .template {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 3px 10px;
   width: 100%;
+  min-width: 0;
   padding: 10px 11px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -141,8 +142,8 @@ input::placeholder { color: var(--vscode-input-placeholderForeground); }
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 9%, var(--vscode-editor-background));
 }
-.template-title { color: var(--vscode-editor-foreground); font-weight: 600; overflow-wrap: anywhere; }
-.language { color: var(--muted); font-size: 12px; }
+.template-title { color: var(--vscode-editor-foreground); font-weight: 600; white-space: normal; overflow-wrap: anywhere; }
+.language { color: var(--muted); font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
 .template-description { grid-column: 1 / -1; color: var(--muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 
 .selection {

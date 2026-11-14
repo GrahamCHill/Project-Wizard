@@ -1,6 +1,6 @@
 # __PROJECT_NAME__
 
-This SDL3 desktop starter selects the **__SDL_BACKEND_LABEL__** renderer. C# owns the app loop and pause state, C++ owns SDL and renders each frame, and embedded Lua computes the moving block’s position. SDL’s 2D API keeps the same scene code across the three backends.
+This SDL3 desktop starter selects the **__SDL_BACKEND_LABEL__** renderer. C# owns the app loop and pause state, C++ owns SDL and renders each frame, and embedded Lua computes the moving block’s position.
 
 Use .NET 8+, CMake 3.24+, and a native C/C++ toolchain. __SDL_BACKEND_NOTE__
 

@@ -5,6 +5,7 @@ function starter(id, group, language, label, description, tools, files, commands
     platforms: options.platforms,
     platformTools: options.platformTools,
     sourceDirectory: options.sourceDirectory,
+    sharedFiles: options.sharedFiles,
     note: options.note,
     cmakeTarget: options.cmakeTarget,
     cmakeLibrary: options.cmakeLibrary,
@@ -20,11 +21,8 @@ function starter(id, group, language, label, description, tools, files, commands
 
 const pythonNote = 'On Windows, use `python` or `py -3` in place of `python3`.';
 const cmakeBuild = ['cmake -S . -B build', 'cmake --build build --config Debug'];
-const qtBuild = ['cmake -S . -B build -DCMAKE_PREFIX_PATH="<Qt kit folder>"', cmakeBuild[1]];
 const cmakeRun = 'Run app from build/ or build/Debug/, depending on the generator. Windows adds the .exe extension.';
-const qtRun = 'Use a Qt kit that matches your compiler and architecture. Run the app from Qt Creator or use the configured Qt runtime and the executable or macOS app bundle in the build directory.';
 const cudaRun = 'Use a C++ compiler supported by your CUDA Toolkit. To target a specific GPU, set CMAKE_CUDA_ARCHITECTURES during configuration. Running the sample requires a compatible NVIDIA GPU and driver. ' + cmakeRun;
-const sdlRun = 'CMake fetches SDL during the first configuration. On Linux, install the SDL build prerequisites for your distribution. ' + cmakeRun;
 
 function gtkStarter(cpp) {
   const pkg = cpp ? 'gtkmm-4.0' : 'gtk4';
@@ -39,23 +37,6 @@ function gtkStarter(cpp) {
     ['cmake', cpp ? 'cpp-compiler' : 'c-compiler', pkg],
     ['CMakeLists.txt', cpp ? 'src/main.cpp' : 'src/main.c', 'gitignore'], [],
     { cmakeTarget: 'app', note, requirement: 'CMake 3.24+, pkg-config, and the ' + pkg + ' development package.' });
-}
-
-function sdlPair(id, label, description, options = {}) {
-  return ['C', 'C++'].map(language => {
-    const cpp = language === 'C++';
-    const suffix = cpp ? '-cpp' : '-c';
-    const template = starter(id + suffix, 'graphics', language, label + ' for ' + language, description,
-      ['cmake', cpp ? 'cpp-compiler' : 'c-compiler', ...(options.tools || [])],
-      ['CMakeLists.txt', 'src/main.c', 'gitignore'], cmakeBuild, {
-        cmakeTarget: 'app',
-        sourceDirectory: options.sourceDirectory,
-        platformTools: { linux: ['sdl-desktop', ...(options.linuxTools || [])] },
-        requirement: options.requirement,
-        note: options.note ? sdlRun + ' ' + options.note : sdlRun
-      });
-    return { ...template, sdl: true };
-  });
 }
 
 function raylibVr(language) {
@@ -184,6 +165,21 @@ const standardTemplates = [
     ['xcodegen generate', 'open MobileApp.xcodeproj'],
     { platforms: ['darwin'], requirement: 'macOS with Xcode, the iOS SDK, and XcodeGen.',
       note: 'Select an iOS simulator in Xcode and press Run. Set your development team and bundle identifier before deploying to a physical device.' }),
+  starter('ios-uikit', 'mobile', 'Swift', 'iOS UIKit App (Swift)',
+    'A native iPhone and iPad app with UIKit, a Home counter, and an About tab.',
+    ['ios-sdk', 'xcodegen'], ['project.yml', 'Sources/AppDelegate.swift', 'Sources/SceneDelegate.swift', 'gitignore'],
+    ['xcodegen generate', 'open MobileApp.xcodeproj'],
+    { platforms: ['darwin'], requirement: 'macOS with Xcode, the iOS SDK, and XcodeGen.',
+      note: 'Choose an iOS simulator in Xcode and press Run. Set your development team and bundle identifier to deploy to a device.' }),
+  starter('android-views', 'mobile', 'Java', 'Android Views App (Java)',
+    'A native Android app with Home and About screens, a saved counter, and a JUnit test.',
+    ['android-gradle', 'android-views-sdk'], ['build.gradle.kts', 'src/main/AndroidManifest.xml',
+      'src/main/java/com/example/mobile/MainActivity.java', 'src/main/java/com/example/mobile/Counter.java',
+      'src/test/java/com/example/mobile/CounterTest.java', 'gitignore'],
+    ['gradle assembleDebug testDebugUnitTest'],
+    { requirement: 'Gradle 9.3.1+, JDK 17+, and Android SDK 34.',
+      sharedFiles: { 'mobile/android-settings.gradle.kts': 'settings.gradle.kts', 'mobile/android-gradle.properties': 'gradle.properties' },
+      note: 'Open the project in Android Studio and run on an emulator or device. From the terminal, run gradle installDebug with a target connected.' }),
   starter('android-compose', 'mobile', 'Kotlin', 'Android Jetpack Compose App',
     'A native Material 3 app with Home and About tabs, a saved counter, and a JUnit test.',
     ['compose-gradle', 'android-sdk'], ['settings.gradle.kts', 'build.gradle.kts', 'gradle.properties',
@@ -198,12 +194,6 @@ const standardTemplates = [
   starter('cpp-cmake', 'cli', 'C++', 'C++ CMake Application', 'A portable C++17 executable with a CMake build.',
     ['cmake', 'cpp-compiler'], ['CMakeLists.txt', 'src/main.cpp', 'gitignore'], cmakeBuild,
     { cmakeTarget: 'app', webTarget: true, note: cmakeRun }),
-  starter('qt-widgets', 'desktop', 'C++', 'Qt Widgets Desktop', 'A native Qt 6 Widgets application with a CMake build.',
-    ['cmake', 'cpp-compiler', 'qt-widgets'], ['CMakeLists.txt', 'src/main.cpp', 'gitignore'], qtBuild,
-    { cmakeTarget: 'app', note: qtRun, requirement: 'Qt 6.5+ Widgets, CMake, and a compatible C++ compiler.' }),
-  starter('qt-quick', 'desktop', 'C++', 'Qt Quick Desktop', 'A Qt 6 C++ application with a QML interface and a CMake build.',
-    ['cmake', 'cpp-compiler', 'qt-quick'], ['CMakeLists.txt', 'src/main.cpp', 'Main.qml', 'gitignore'], qtBuild,
-    { cmakeTarget: 'app', note: qtRun, requirement: 'Qt 6.5+ Quick, CMake, and a compatible C++ compiler.' }),
   starter('wxwidgets', 'desktop', 'C++', 'wxWidgets Desktop', 'A native cross-platform C++ desktop window built with wxWidgets and CMake.',
     ['cmake', 'cpp-compiler'], ['CMakeLists.txt', 'src/main.cpp', 'gitignore'],
     [cmakeBuild[0], 'cmake --build build --config Debug --target app'],
@@ -242,15 +232,6 @@ const standardTemplates = [
     [], { requirement: 'Godot 4.3 or newer.',
       note: 'Import `project.godot` in the Godot Project Manager and press F6 with the main scene open, or F5 to run the project. ' +
         'Use the arrow keys to move. Add new levels under `game/levels` and keep each feature’s scenes and scripts together.' }),
-  ...sdlPair('sdl', 'SDL', 'A resizable SDL window with a 2D rendering and input loop.'),
-  ...sdlPair('sdl-opengl', 'SDL + OpenGL', 'An OpenGL 3.3 core context and a render loop.', {
-    sourceDirectory: 'sdl-opengl', linuxTools: ['opengl-dev']
-  }),
-  ...sdlPair('sdl-vulkan', 'SDL + Vulkan', 'A Vulkan swapchain with a resize-aware color-clear render loop.', {
-    sourceDirectory: 'sdl-vulkan', tools: ['vulkan-dev'],
-    requirement: 'CMake, a native compiler, and Vulkan development files 1.3.216 or newer. Run with a Vulkan 1.1 driver or MoltenVK.',
-    note: 'On Windows, install the Vulkan SDK and restart your shell so VULKAN_SDK is set. On Linux, install your distribution’s Vulkan loader development package and a Vulkan driver. On macOS, install the Vulkan SDK with MoltenVK and load its setup-env.sh before building and running.'
-  }),
   ...['C', 'C++'].map(raylibVr),
   starter('kotlin-android-xr', 'vr', 'Kotlin', 'Kotlin Android XR', 'A Jetpack Compose for XR spatial panel with Home Space and Full Space controls.',
     ['android-xr-gradle', 'android-sdk'], ['settings.gradle.kts', 'build.gradle.kts', 'gradle.properties',
@@ -325,9 +306,14 @@ const standardTemplates = [
   starter('swift-desktop', 'desktop', 'Swift', 'SwiftUI Desktop', 'A native macOS window in an executable Swift package.',
     ['swift', 'apple-sdk'], ['Package.swift', 'Sources/App/App.swift', 'gitignore'], ['swift run'],
     { platforms: ['darwin'], requirement: 'macOS 13 or newer with the macOS SDK.' }),
-  starter('objc-desktop', 'desktop', 'Objective-C', 'Objective-C AppKit Desktop', 'A native macOS window using AppKit and Clang.',
-    ['apple-sdk'], ['main.m', 'gitignore'], ['xcrun --sdk macosx clang -fobjc-arc main.m -framework AppKit -o app', './app'],
-    { platforms: ['darwin'], requirement: 'macOS with the macOS SDK.' }),
+  starter('objc-desktop', 'desktop', 'Objective-C', 'macOS AppKit (Objective-C)', 'An Objective-C AppKit window with a counter and native menu.',
+    ['apple-sdk'], ['gitignore'], ['xcrun --sdk macosx clang -fobjc-arc main.m -framework AppKit -o app', './app'],
+    { platforms: ['darwin'], requirement: 'macOS with the macOS SDK.', sharedFiles: { 'desktop/AppKit.mm': 'main.m' } }),
+  starter('objc-cpp-desktop', 'desktop', 'Objective-C', 'macOS AppKit (Objective-C++ and C++)',
+    'An AppKit window in Objective-C++ calling a separate C++ counter implementation.',
+    ['apple-sdk'], ['counter.cpp', 'counter.hpp', 'gitignore'],
+    ['xcrun --sdk macosx clang++ -std=c++17 -fobjc-arc main.mm counter.cpp -framework AppKit -o app', './app'],
+    { platforms: ['darwin'], requirement: 'macOS with the macOS SDK.', sharedFiles: { 'desktop/AppKit.mm': 'main.mm' } }),
 
   starter('java-cli', 'cli', 'Java', 'Java Command Line', 'A Java command-line application with a greeting.',
     ['java'], ['Main.java', 'gitignore'], ['javac -d out Main.java', 'java -cp out Main']),

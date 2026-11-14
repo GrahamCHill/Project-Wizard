@@ -153,6 +153,10 @@ const toolchains = {
     label: 'Android SDK 37', url: 'https://developer.android.com/studio/intro/update#sdk-manager',
     instructions: 'In Android Studio’s SDK Manager install the Android 37 SDK Platform and Build-Tools 37.0.0. Set ANDROID_HOME to the SDK folder.'
   },
+  'android-views-sdk': {
+    label: 'Android SDK 34', url: 'https://developer.android.com/studio',
+    instructions: 'Install Android SDK Platform 34 and Build-Tools 36.0.0 in Android Studio SDK Manager. Set ANDROID_HOME to the SDK directory.'
+  },
   'android-ndk': {
     label: 'Android NDK r28c', url: 'https://developer.android.com/studio/projects/install-ndk',
     instructions: 'In Android Studio’s SDK Tools tab enable Show Package Details and install NDK (Side by side) 28.2.13676358.'
@@ -399,13 +403,16 @@ const toolchains = {
     label: 'Linux kernel build headers', url: 'https://docs.kernel.org/kbuild/modules.html',
     instructions: 'Install the build headers for the kernel from uname -r. On Debian or Ubuntu, install linux-headers-$(uname -r). On Fedora, install kernel-devel for that release. For a custom kernel, set KDIR to its prepared build directory before starting VS Code.'
   },
-  'qt-widgets': {
-    label: 'Qt 6 Widgets', url: 'https://doc.qt.io/qt-6/qt-online-installation.html',
-    instructions: 'Install a Qt 6.5 or newer desktop kit with Widgets and set CMAKE_PREFIX_PATH to its kit folder.'
-  },
-  'qt-quick': {
-    label: 'Qt 6 Quick', url: 'https://doc.qt.io/qt-6/qt-online-installation.html',
-    instructions: 'Install a Qt 6.5 or newer desktop kit with Qt Quick and set CMAKE_PREFIX_PATH to its kit folder.'
+  ...Object.fromEntries([5, 6].flatMap(major => ['Widgets', 'Quick'].map(module => [
+    'qt' + major + '-' + module.toLowerCase(), {
+      label: 'Qt ' + major + ' ' + module, url: 'https://www.qt.io/download-open-source',
+      instructions: 'Install a Qt ' + (major === 5 ? '5.15' : '6.5') + '+ desktop kit with ' + module +
+        ' and set CMAKE_PREFIX_PATH to its kit folder. Use a kit matching your compiler and architecture.'
+    }
+  ]))),
+  'windows-directx-sdk': {
+    label: 'Windows SDK for DirectX', url: 'https://developer.microsoft.com/windows/downloads/windows-sdk/',
+    instructions: 'Install a recent Windows SDK with the Direct3D headers. For MSVC use the Desktop development with C++ workload.'
   },
   'wx-gtk': {
     label: 'wxWidgets or GTK 3 development files', url: 'https://www.wxwidgets.org/docs/faq/linux/',
@@ -613,31 +620,52 @@ async function findQt(settings, dirs) {
   const { env, home, platform } = settings;
   const onlineRoots = [path.join(home, 'Qt'), ...(platform === 'win32' ? ['C:\\Qt'] : [])];
   const releases = (await Promise.all(onlineRoots.map(root => subdirectories(root, '')))).flat()
-    .filter(root => /^6\.\d+\.\d+$/.test(path.basename(root)));
+    .filter(root => /^[56]\.\d+\.\d+$/.test(path.basename(root)));
   const kits = (await Promise.all(releases.map(root => subdirectories(root, '')))).flat()
     .filter(kit => !/^(?:android|ios|wasm)/i.test(path.basename(kit)));
-  const qmake = await detectExecutable(['qmake6', 'qmake'], ['-query', 'QT_VERSION'], /^(\d+\.\d+\.\d+)$/, dirs, settings);
-  const prefix = qmake && await commandOutput(qmake.file, ['-query', 'QT_INSTALL_PREFIX'], settings).catch(() => '');
+  const qmakeFiles = await candidates(['qmake6', 'qmake-qt6', 'qmake5', 'qmake-qt5', 'qmake'], dirs, platform);
+  const prefixes = await Promise.all(qmakeFiles.map(file =>
+    commandOutput(file, ['-query', 'QT_INSTALL_PREFIX'], settings).catch(() => '')));
   const multiarch = { x64: 'x86_64-linux-gnu', arm64: 'aarch64-linux-gnu' }[process.arch];
-  const hints = [
-    env.Qt6_DIR, ...(env.CMAKE_PREFIX_PATH || '').split(path.delimiter), prefix, ...kits,
-    ...(platform === 'darwin' ? ['/opt/homebrew/opt/qt', '/usr/local/opt/qt'] : []),
-    ...(platform === 'linux' ? ['/usr', '/usr/local', ...(multiarch ? ['/usr/lib/' + multiarch + '/cmake/Qt6'] : []), '/usr/lib64/cmake/Qt6'] : [])
-  ].filter(hint => hint && path.isAbsolute(hint));
   const result = {};
-  for (const hint of new Set(hints)) {
-    const config = path.basename(hint).toLowerCase() === 'qt6' ? hint : path.join(hint, 'lib', 'cmake', 'Qt6');
-    const versionFiles = await Promise.all(['Qt6ConfigVersion.cmake', 'Qt6ConfigVersionImpl.cmake']
-      .map(file => fs.readFile(path.join(config, file), 'utf8').catch(() => '')));
-    const version = versionFiles.join('\n').match(/set\(PACKAGE_VERSION\s+"(\d+\.\d+\.\d+)"/)?.[1];
-    if (!version || !atLeast(version, 6, 5)) continue;
-    for (const module of ['Widgets', 'Quick']) {
-      const file = path.join(path.dirname(config), 'Qt6' + module, 'Qt6' + module + 'Config.cmake');
-      const id = 'qt-' + module.toLowerCase();
-      if (!result[id] && await fs.access(file).then(() => true, () => false)) result[id] = { version, file };
+  for (const [major, minimum] of [[5, 15], [6, 5]]) {
+    const packageName = 'Qt' + major;
+    const hints = [
+      env[packageName + '_DIR'], ...(env.CMAKE_PREFIX_PATH || '').split(/[;\n]/).flatMap(item => item.split(path.delimiter)),
+      ...prefixes, ...kits,
+      ...(platform === 'darwin' ? ['/opt/homebrew/opt', '/usr/local/opt']
+        .flatMap(dir => [path.join(dir, 'qt'), path.join(dir, 'qt@' + major)]) : []),
+      ...(platform === 'linux' ? ['/usr', '/usr/local', '/usr/lib64/cmake/' + packageName,
+        ...(multiarch ? ['/usr/lib/' + multiarch + '/cmake/' + packageName] : [])] : [])
+    ].filter(hint => hint && path.isAbsolute(hint));
+    for (const hint of new Set(hints)) {
+      const config = path.basename(hint).toLowerCase() === packageName.toLowerCase() ? hint : path.join(hint, 'lib', 'cmake', packageName);
+      const versionFiles = await Promise.all(['ConfigVersion.cmake', 'ConfigVersionImpl.cmake']
+        .map(file => fs.readFile(path.join(config, packageName + file), 'utf8').catch(() => '')));
+      const version = versionFiles.join('\n').match(/set\(PACKAGE_VERSION\s+"(\d+\.\d+\.\d+)"/)?.[1];
+      if (!version || !atLeast(version, major, minimum)) continue;
+      for (const module of ['Widgets', 'Quick']) {
+        const name = packageName + module;
+        const file = path.join(path.dirname(config), name, name + 'Config.cmake');
+        const id = packageName.toLowerCase() + '-' + module.toLowerCase();
+        if (!result[id] && await fs.access(file).then(() => true, () => false)) result[id] = { version, file };
+      }
     }
   }
   return result;
+}
+
+async function findDirectxSdk(env) {
+  const roots = [env.WindowsSdkDir, env['ProgramFiles(x86)'] && path.join(env['ProgramFiles(x86)'], 'Windows Kits', '10')];
+  for (const root of roots) {
+    if (!root) continue;
+    for (const directory of await subdirectories(path.join(root, 'Include'), '')) {
+      const files = ['d3d11_1.h', 'd3d12.h', 'dxgi1_6.h'].map(header => path.join(directory, 'um', header));
+      if ((await Promise.all(files.map(file => fs.access(file).then(() => true, () => false)))).every(Boolean)) {
+        return { version: path.basename(directory), file: files[1] };
+      }
+    }
+  }
 }
 
 async function findAppleSdk(settings) {
@@ -754,10 +782,12 @@ async function findAndroidTools({ env, home, platform }) {
     const buildTools = path.join(root, 'build-tools', '37.0.0', exe('aapt2'));
     const ndk = path.join(root, 'ndk', '28.2.13676358', 'build', 'cmake', 'android.toolchain.cmake');
     const cmake = path.join(root, 'cmake', '3.31.6', 'bin', exe('cmake'));
-    const [rootExists, modern, legacy, build, native, cmakeFound] = await Promise.all(
-      [root, ...platformFiles, buildTools, ndk, cmake].map(exists));
+    const [rootExists, modern, legacy, build, native, cmakeFound, viewsPlatform, viewsTools] = await Promise.all(
+      [root, ...platformFiles, buildTools, ndk, cmake, path.join(root, 'platforms', 'android-34', 'android.jar'),
+        path.join(root, 'build-tools', '36.0.0', exe('aapt2'))].map(exists));
     if (rootExists) return {
       'android-sdk': (modern || legacy) && build ? { version: '37', file: root } : undefined,
+      'android-views-sdk': viewsPlatform && viewsTools ? { version: '34', file: root } : undefined,
       'android-ndk': native ? { version: '28.2.13676358', file: ndk } : undefined,
       'android-cmake': cmakeFound ? { version: '3.31.6', file: cmake } : undefined
     };
@@ -1075,6 +1105,7 @@ async function detectToolchains(settings = system) {
     'cpp-compiler': systemCompiler || cpp,
     'wx-gtk': wx || gtk,
     'sdl-desktop': x11 || wayland,
+    'windows-directx-sdk': windows && studio ? await findDirectxSdk(env) : undefined,
     'sfml-desktop': xi && harfbuzz ? sfml : undefined,
     'sfml2-desktop': sfml,
     'opengl-dev': gl,

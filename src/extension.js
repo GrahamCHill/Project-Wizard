@@ -175,6 +175,14 @@ function wizardHtml(webview, extensionUri) {
           <details id="project-options" hidden>
             <summary>Project setup</summary>
             <fieldset id="option-fields">
+              <div id="language-choice-field" hidden>
+                <label for="project-language-choice">Language</label>
+                <select id="project-language-choice"></select>
+              </div>
+              <div id="renderer-choice-field" hidden>
+                <label id="renderer-choice-label" for="renderer-choice"></label>
+                <select id="renderer-choice"></select>
+              </div>
               <div id="build-choice-field" hidden>
                 <label id="build-choice-label" for="build-choice"></label>
                 <select id="build-choice"></select>
@@ -239,6 +247,7 @@ function wizardHtml(webview, extensionUri) {
     <form id="settings-form">
       <h2 id="settings-heading">Project Wizard settings</h2>
       <label class="option-check"><input id="open-on-startup" type="checkbox"> Open Project Wizard when VS Code starts</label>
+      <label class="option-check"><input id="hide-unavailable" type="checkbox"> Hide templates and choices that need toolchain setup</label>
       <label class="option-check"><input id="enable-vr" type="checkbox"> Enable VR templates</label>
       <label class="option-check"><input id="enable-latex" type="checkbox"> Enable LaTeX templates</label>
       <div class="settings-lists">
@@ -382,7 +391,7 @@ function activate(context) {
       const availability = templateAvailability(template, detected, process.platform, manager);
       const options = projectOptions(template, detected, pythonVersions, process.platform, manager);
       const builds = options?.buildChoice || options?.targetChoice;
-      const ready = builds ? builds.options.some(option => option.ready) : availability.ready;
+      const ready = options?.ready ?? (builds ? builds.options.some(option => option.ready) : availability.ready);
       return { ...template, ...availability, options, ready };
     });
     session.templates = new Map(templates.map(template => [template.id, template]));

@@ -1,13 +1,14 @@
 #include "starter.h"
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QUrl>
 #include <QVariant>
 
 int main(int argc, char *argv[])
 {
     QGuiApplication application(argc, argv);
     QQmlApplicationEngine engine;
-    engine.loadFromModule("ProjectStarter", "Main");
+    __QT_LOAD_QML__
     if (engine.rootObjects().isEmpty()) {
         return 1;
     }

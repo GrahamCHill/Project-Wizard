@@ -8,8 +8,8 @@ async function configureNativeDistribution(project, template, options) {
       template.androidCmake || (options.targets && !options.targets.includes('native'))) return;
 
   const cmake = path.join(project, 'cmake');
-  const vulkan = template.id.includes('-vulkan-');
-  const qt = template.id.startsWith('qt-');
+  const vulkan = template.renderer?.id === 'vulkan' || template.id.includes('-vulkan-');
+  const qt = template.qt;
   const files = ['Distribution.cmake', 'StageDistribution.cmake.in', 'Run.sh.in', 'InstallRuntime.cmake.in', 'FixupBundle.cmake.in'];
   if (vulkan) files.push('VulkanRuntime.cmake.in');
   await fs.mkdir(cmake, { recursive: true });
@@ -17,7 +17,8 @@ async function configureNativeDistribution(project, template, options) {
     const source = await fs.readFile(path.join(shared, file), 'utf8');
     const configured = source.replaceAll('__APP_TARGET__', template.cmakeTarget)
       .replaceAll('__HAS_VULKAN__', vulkan ? 'ON' : 'OFF')
-      .replaceAll('__QT_DEPLOY__', qt ? (template.id === 'qt-quick' ? 'Quick' : 'Widgets') : '')
+      .replaceAll('__QT_DEPLOY__', qt ? (template.qtInterface === 'quick' ? 'Quick' : 'Widgets') : '')
+      .replaceAll('__QT_PACKAGE__', qt ? (template.qtVersion.id === 'qt6' ? 'Qt6' : 'Qt5') : '')
       .replaceAll('__HAS_LUA_SCRIPT__', template.id === 'cpp-lua-desktop' ? 'ON' : 'OFF');
     await fs.writeFile(path.join(cmake, file), configured, { flag: 'wx' });
   }

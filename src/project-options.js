@@ -13,7 +13,9 @@ const { iconVariants } = require('./icon-data');
 const { configureDesktopApp } = require('./desktop-icons');
 const { configureMobileIcons } = require('./mobile-icons');
 const { sfmlVersions } = require('./sfml');
-const { sdlVersions } = require('./sdl');
+const { resolveSdl, sdlRenderers, sdlVersions } = require('./sdl');
+const { qtInterfaces, qtVersions, resolveQt } = require('./qt');
+const { mixedRenderers, resolveMixedSdl } = require('./mixed-starters');
 const { wailsVersions } = require('./wails');
 const { templateAvailability } = require('./toolchains');
 
@@ -67,10 +69,54 @@ function cmakeChoices(template) {
 }
 
 function nativeOptionsTemplate(template) {
-  if (template.nativeTarget) return { id: template.id, language: 'C++', cmakeTarget: template.nativeTarget, sdlBackend: template.sdlBackend };
+  if (template.nativeTarget) return { id: template.id, language: 'C++', cmakeTarget: template.nativeTarget,
+    sdlBackend: template.sdlBackend || template.sdlMixed };
+}
+
+function cmakeOptions(template) {
+  return { type: 'cmake', libraries: cmakeChoices(template), libraryLabel: 'Common CMake libraries',
+    dependencies: 'Additional CMake archives', example: 'name target https://example.com/library.tar.gz [sha256]',
+    dependencyHint: 'Choose a preset to include a runnable example, or enter a custom archive. Use one line per dependency.',
+    ...testOptions(...(template.language === 'C' ? ['ctest'] : ['gtest', 'catch2'])) };
 }
 
 function buildOptions(template, tools, versions, platform, manager) {
+  if (['android-views', 'ios-uikit'].includes(template.id)) return;
+  if (template.sdl) {
+    const languageChoice = buildChoice('Language', template.variants.map(choice => ({
+      id: choice.id, label: choice.language,
+      tools: ['c-compiler', ...(choice.id === 'cpp' ? ['cpp-compiler'] : [])]
+    })), tools, platform, manager);
+    return {
+      ...cmakeOptions(template), languageChoice,
+      languageOptions: Object.fromEntries(template.variants.map(choice =>
+        [choice.id, cmakeOptions({ ...template, language: choice.language })])),
+      buildChoice: buildChoice('SDL version', sdlVersions.map(version => ({ ...template, ...version })), tools, platform, manager),
+      rendererChoice: buildChoice('Renderer', sdlRenderers.filter(renderer => !renderer.platforms || renderer.platforms.includes(platform)),
+        tools, platform, manager),
+      ready: languageChoice.options.some(option => option.ready) &&
+        templateAvailability(template, tools, platform, manager).ready
+    };
+  }
+  if (template.qt) {
+    const buildsByRenderer = Object.fromEntries(qtInterfaces.map(ui => [ui.id, buildChoice('Qt version',
+      qtVersions.map(version => {
+        const tool = version.id + '-' + ui.id;
+        return { ...version, label: tools[tool]?.version ? 'Qt ' + tools[tool].version : version.label,
+          tools: [...template.tools, tool],
+          requirement: 'Qt ' + version.minimum + '+ with ' + ui.label + ', CMake 3.24+, and a compatible C++ compiler.' };
+      }),
+      tools, platform, manager)]));
+    const rendererChoice = {
+      label: 'Interface', options: qtInterfaces.map(ui => ({
+        ...ui, ready: buildsByRenderer[ui.id].options.some(option => option.ready)
+      })),
+      defaultId: qtInterfaces.find(ui => buildsByRenderer[ui.id].options.some(option => option.ready))?.id || qtInterfaces[0].id
+    };
+    return { ...cmakeOptions(template), rendererChoice, buildsByRenderer,
+      buildChoice: buildsByRenderer[rendererChoice.defaultId],
+      ready: Object.values(buildsByRenderer).some(build => build.options.some(option => option.ready)) };
+  }
   if (template.docker) {
     if (template.variants) return { type: 'docker', buildChoice: buildChoice(template.choiceLabel,
       template.variants.map(({ id, label }) => ({ id, label, tools: template.tools, requirement: template.requirement })),
@@ -86,7 +132,12 @@ function buildOptions(template, tools, versions, platform, manager) {
       ...packageChoices.map(item => ({ ...item, label: 'C# · ' + item.label })),
       ...cmakeChoices(native).map(item => ({ ...item, label: 'C++ · ' + item.label }))
     ] : packageChoices;
-    return { type: 'dotnet', libraries, libraryLabel: native ? 'Common NuGet and CMake libraries' : 'Common NuGet packages',
+    const rendererChoice = template.sdlMixed ? buildChoice('Renderer',
+      mixedRenderers.filter(renderer => !renderer.platforms || renderer.platforms.includes(platform)).map(renderer => ({
+        ...renderer, tools: [...template.tools, ...(renderer.tools || [])], requirement: template.requirement + ' ' + renderer.note
+      })), tools, platform, manager) : undefined;
+    return { type: 'dotnet', rendererChoice, ready: rendererChoice?.options.some(renderer => renderer.ready),
+      libraries, libraryLabel: native ? 'Common NuGet and CMake libraries' : 'Common NuGet packages',
       dependencies: native ? 'Additional NuGet and CMake dependencies' : 'Additional NuGet packages',
       example: 'LiteNetLib 2.1.5', dependencyHint: native ?
         'Choose a package above or enter a NuGet package ID and version or a CMake archive line. Use one line per dependency.' :
@@ -95,19 +146,14 @@ function buildOptions(template, tools, versions, platform, manager) {
   }
   if (template.kind !== 'starter') return;
   if (template.cmakeTarget) {
-    const graphicsVersion = template.sfml ? buildChoice('SFML version', sfmlVersions, tools, platform, manager) :
-      template.sdl ? buildChoice('SDL version', sdlVersions.map(version => ({ ...template, ...version })), tools, platform, manager) : undefined;
-    return { type: 'cmake', libraries: cmakeChoices(template), libraryLabel: 'Common CMake libraries',
-      buildChoice: graphicsVersion,
-      dependencies: 'Additional CMake archives', example: 'name target https://example.com/library.tar.gz [sha256]',
-      dependencyHint: 'Choose a preset to include a runnable example, or enter a custom archive. Use one line per dependency.',
+    return { ...cmakeOptions(template),
+      buildChoice: template.sfml ? buildChoice('SFML version', sfmlVersions, tools, platform, manager) : undefined,
       targetChoice: template.webTarget ? buildChoice('Target platforms', [
         { id: 'native', label: 'Desktop (native)', tools: template.tools, platformTools: template.platformTools,
           requirement: template.requirement },
         { id: 'emscripten', label: 'Web (Emscripten)', tools: ['cmake', 'emscripten'], platformTools: { win32: ['emscripten-generator'] },
           requirement: 'CMake 3.24+ and an activated Emscripten SDK.' }
-      ], tools, platform, manager) : undefined,
-      ...testOptions(...(template.language === 'C' ? ['ctest'] : ['gtest', 'catch2'])) };
+      ], tools, platform, manager) : undefined };
   }
   if (template.language === 'Java') {
     return { type: 'java', buildChoice: buildChoice('Build system', javaBuilds, tools, platform, manager),
@@ -154,19 +200,20 @@ function parseNpmLibraries(lines) {
   return packages;
 }
 
-function readProjectOptions(template, input = {}, selectedIcons) {
-  const config = projectOptions(template);
+function readProjectOptions(template, input = {}, selectedIcons, platform = process.platform) {
+  const config = projectOptions(template, {}, [], platform);
   if (!config) return;
   if (!input || typeof input !== 'object') throw new Error('Invalid project options.');
   const text = typeof input.dependencies === 'string' ? input.dependencies : '';
   if (text.length > 12000) throw new Error('Enter fewer dependencies.');
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-  const frameworks = config.frameworks || [];
+  const renderer = readChoice(config.rendererChoice, input.renderer, 'renderer or interface');
+  const language = readChoice(config.languageChoice, input.language, 'language');
+  const build = readChoice(config.buildsByRenderer?.[renderer] || config.buildChoice, input.build, 'build option');
+  if (template.sdl) template = resolveSdl(template, { build, renderer, language });
+  const frameworks = config.languageOptions?.[language]?.frameworks || config.frameworks || [];
   const framework = input.testing === true ? input.framework || frameworks[0]?.id : undefined;
   if (framework && !frameworks.some(item => item.id === framework)) throw new Error('Choose a supported test framework.');
-  const builds = config.buildChoice?.options;
-  const build = builds && (input.build || builds[0].id);
-  if (build && !builds.some(option => option.id === build)) throw new Error('Choose a supported build option.');
   let targets;
   if (config.targetChoice) {
     const selected = input.targets ?? ['native'];
@@ -213,7 +260,14 @@ function readProjectOptions(template, input = {}, selectedIcons) {
     packages = parseNuGetPackages(nugetLines);
     if (native) nativePackages = parseCmakeLibraries(native, [], cmakeLines);
   }
-  return { type: config.type, packages, nativePackages, framework, build, targets, icons };
+  return { type: config.type, packages, nativePackages, framework, build, renderer, language, targets, icons };
+}
+
+function readChoice(choice, value, label) {
+  if (!choice) return;
+  const id = value || choice.defaultId;
+  if (!choice.options.some(option => option.id === id)) throw new Error('Choose a supported ' + label + '.');
+  return id;
 }
 
 async function appendTest(project, file, source, command, label) {
@@ -270,6 +324,9 @@ async function configureNpm(project, template, name, options) {
 
 async function applyProjectOptions(project, template, name, options, parent, log) {
   if (!options) return;
+  if (template.sdl) template = resolveSdl(template, options);
+  if (template.sdlMixed) template = resolveMixedSdl(template, options);
+  if (template.qt) template = resolveQt(template, options);
   if (!options.icons) {
     await applyBuildOptions(project, template, name, options, parent, log);
     if (options.type !== 'cmake' && (template.group === 'desktop' || template.sdlBackend || (template.group === 'raylib' && template.language === 'C#'))) {

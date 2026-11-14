@@ -71,7 +71,7 @@ async function configureMobileIcons(project, template, name, raster) {
     await fs.writeFile(file, JSON.stringify({ ...config, expo }, null, 2) + '\n');
     return;
   }
-  if (template.id === 'ios-swiftui') {
+  if (['ios-swiftui', 'ios-uikit'].includes(template.id)) {
     await iosIcon(project, 'Sources/Assets.xcassets', raster);
     const file = path.join(project, 'project.yml');
     const spec = await fs.readFile(file, 'utf8');

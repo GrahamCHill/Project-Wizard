@@ -10,9 +10,9 @@ function windowIconCode(template, build) {
   }
   if (template.sdl) {
     const sdl2 = sdlVersion(build).major === 2;
-    const marker = template.id.includes('-vulkan-') ? '    VulkanApp app = { 0 };' :
-      template.id.includes('-opengl-') ? '    SDL_GLContext context = SDL_GL_CreateContext(window);' :
-        sdl2 ? '    SDL_Renderer *renderer = SDL_CreateRenderer' : '    SDL_SetRenderVSync';
+    const marker = template.renderer.id === 'vulkan' ? '    VulkanApp app = { 0 };' :
+      template.renderer.id === 'opengl' ? '    SDL_GLContext context = SDL_GL_CreateContext(window);' :
+        '    SDL_Renderer *renderer = SDL_CreateRenderer';
     return [marker, [
       sdl2 ?
         '    SDL_Surface *icon = SDL_CreateRGBSurfaceWithFormatFrom(app_icon_pixels, 48, 48, 32, 48 * 4, SDL_PIXELFORMAT_RGBA32);' :
@@ -29,8 +29,8 @@ function windowIconCode(template, build) {
       '    SetWindowIcon(icon);'
     ].join('\n'), true];
   }
-  if (['qt-widgets', 'qt-quick'].includes(template.id)) {
-    const application = template.id === 'qt-widgets' ? 'QApplication' : 'QGuiApplication';
+  if (template.qt) {
+    const application = template.qtInterface === 'widgets' ? 'QApplication' : 'QGuiApplication';
     return [`    ${application} application(argc, argv);`,
       '    application.setWindowIcon(QIcon(QPixmap::fromImage(QImage(app_icon_pixels, 48, 48, 48 * 4, QImage::Format_RGBA8888))));',
       false, '#include <QIcon>\n#include <QImage>\n#include <QPixmap>'];

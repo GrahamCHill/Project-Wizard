@@ -13,14 +13,40 @@ if(distribution_qt)
     install(TARGETS ${distribution_target}
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT ${distribution_component}
         BUNDLE DESTINATION . COMPONENT ${distribution_component})
-    if(distribution_qt STREQUAL "Quick")
-        qt_generate_deploy_qml_app_script(TARGET ${distribution_target} OUTPUT_SCRIPT deploy_script
-            NO_UNSUPPORTED_PLATFORM_ERROR DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM)
-    else()
-        qt_generate_deploy_app_script(TARGET ${distribution_target} OUTPUT_SCRIPT deploy_script
-            NO_UNSUPPORTED_PLATFORM_ERROR)
+    # Linux distribution packages supply Qt plugins and QML modules through the system package manager.
+    if("__QT_PACKAGE__" STREQUAL "Qt6" AND (WIN32 OR APPLE))
+        if(distribution_qt STREQUAL "Quick")
+            qt_generate_deploy_qml_app_script(TARGET ${distribution_target} OUTPUT_SCRIPT deploy_script
+                NO_UNSUPPORTED_PLATFORM_ERROR)
+        else()
+            qt_generate_deploy_app_script(TARGET ${distribution_target} OUTPUT_SCRIPT deploy_script
+                NO_UNSUPPORTED_PLATFORM_ERROR)
+        endif()
+        install(SCRIPT "${deploy_script}" COMPONENT ${distribution_component})
+    elseif(WIN32 OR APPLE)
+        get_target_property(qt_qmake __QT_PACKAGE__::qmake IMPORTED_LOCATION)
+        get_filename_component(qt_bin "${qt_qmake}" DIRECTORY)
+        if(WIN32)
+            find_program(qt_deployer NAMES windeployqt HINTS "${qt_bin}" NO_DEFAULT_PATH)
+            set(qt_target_path "${CMAKE_INSTALL_BINDIR}/$<TARGET_FILE_NAME:${distribution_target}>")
+            set(qt_qml_args "--qmldir \"${CMAKE_CURRENT_SOURCE_DIR}\"")
+        else()
+            find_program(qt_deployer NAMES macdeployqt HINTS "${qt_bin}" NO_DEFAULT_PATH)
+            set(qt_target_path "$<TARGET_BUNDLE_DIR_NAME:${distribution_target}>")
+            set(qt_qml_args "\"-qmldir=${CMAKE_CURRENT_SOURCE_DIR}\"")
+        endif()
+        if(NOT distribution_qt STREQUAL "Quick")
+            unset(qt_qml_args)
+        endif()
+        if(qt_deployer)
+            install(CODE "
+                execute_process(COMMAND \"${qt_deployer}\" \"\${CMAKE_INSTALL_PREFIX}/${qt_target_path}\" ${qt_qml_args}
+                    COMMAND_ERROR_IS_FATAL ANY)
+            " COMPONENT ${distribution_component})
+        else()
+            install(CODE "message(FATAL_ERROR \"Install the Qt deployment tool for this kit.\")" COMPONENT ${distribution_component})
+        endif()
     endif()
-    install(SCRIPT "${deploy_script}" COMPONENT ${distribution_component})
 elseif(APPLE)
     install(TARGETS ${distribution_target} BUNDLE DESTINATION . COMPONENT ${distribution_component})
     if(distribution_vulkan)

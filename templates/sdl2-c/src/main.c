@@ -20,7 +20,24 @@ int main(void)
         return 1;
     }
 
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
+    const char *driver = __SDL_RENDER_DRIVER__;
+    int index = -1;
+    if (driver) {
+        for (int i = 0; i < SDL_GetNumRenderDrivers(); ++i) {
+            SDL_RendererInfo info;
+            if (SDL_GetRenderDriverInfo(i, &info) == 0 && SDL_strcmp(driver, info.name) == 0) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) {
+            fprintf(stderr, "The requested SDL renderer %s is unavailable.\n", driver);
+            SDL_DestroyWindow(window);
+            SDL_Quit();
+            return 1;
+        }
+    }
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, index, SDL_RENDERER_PRESENTVSYNC);
     if (!renderer) {
         fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());
         SDL_DestroyWindow(window);

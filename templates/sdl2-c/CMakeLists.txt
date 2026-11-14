@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 project(__PROJECT_IDENTIFIER__ LANGUAGES __CMAKE_LANGUAGE__)
 
 include(FetchContent)
+__SDL_DIRECTX_CMAKE__
 set(SDL_SHARED OFF CACHE BOOL "Build SDL as a static library")
 set(SDL_STATIC ON CACHE BOOL "Build SDL as a static library")
 set(SDL_TESTS OFF CACHE BOOL "Build SDL's tests")

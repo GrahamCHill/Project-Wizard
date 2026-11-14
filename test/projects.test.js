@@ -163,7 +163,7 @@ test('generates the bundled source templates with portable names and run instruc
     const project = await createProject(parent, name, (target, directory) => writeStarter(template, name, target, directory));
     for (const file of template.files) {
       const output = file === 'gitignore' ? '.gitignore' :
-        template.language === 'C++' && file === 'src/main.c' ? 'src/main.cpp' : file;
+        (template.language === 'C++' || template.sdl) && file === 'src/main.c' ? 'src/main.cpp' : file;
       const moduleName = 'Game9ExampleProject';
       const generated = path.join(project, replaceTokens(output, name).replaceAll('__UNREAL_MODULE__', moduleName));
       assert.doesNotMatch(await fs.readFile(generated, 'utf8'), /__PROJECT_[A-Z]+__/);
@@ -176,20 +176,21 @@ test('generates the bundled source templates with portable names and run instruc
 
 test('scaffolds mixed SDL backends and both plugin contracts with Lua', async t => {
   const root = await fixture(t);
-  const backends = { vulkan: 'vulkan', opengl: 'opengl', directx: 'direct3d11' };
+  const backends = { vulkan: 'vulkan', opengl: 'opengl', dx11: 'direct3d11', dx12: 'direct3d12' };
+  const template = starters.find(item => item.sdlMixed);
+  assert.deepEqual(projectOptions(template, {}, [], 'darwin').rendererChoice.options.map(renderer => renderer.id), ['vulkan', 'opengl']);
   for (const [id, driver] of Object.entries(backends)) {
-    const template = starters.find(item => item.id === `sdl3-${id}-csharp-cpp-lua`);
+    const options = readProjectOptions(template, { renderer: id, dependencies: 'libuv' }, undefined, 'win32');
     const name = `Mixed ${id}`;
     const project = await createProject(root, name, async (target, parent) => {
-      await writeStarter({ ...template, needsSdk: false }, name, target, parent);
-      await applyProjectOptions(target, template, name, readProjectOptions(template, { dependencies: 'libuv' }));
+      await writeStarter({ ...template, needsSdk: false }, name, target, parent, undefined, {}, options);
+      await applyProjectOptions(target, template, name, options);
     });
     const cmake = await fs.readFile(path.join(project, 'native/CMakeLists.txt'), 'utf8');
     assert.ok(cmake.includes(`PW_SDL_BACKEND="${driver}"`));
     assert.match(cmake, /SDL3::SDL3-static lua_runtime/);
     assert.match(await fs.readFile(path.join(project, 'native/cmake/ProjectOptions.cmake'), 'utf8'), /pw_native PRIVATE uv_a/);
     assert.match(await fs.readFile(path.join(project, 'scripts/behavior.lua'), 'utf8'), /function update\(/);
-    assert.equal(templatesForPlatform([template], 'darwin').length, id === 'directx' ? 0 : 1);
   }
   for (const [id, contract] of [['cpp-plugin-host', 'include/plugin_api.h'], ['csharp-plugin-host', 'contracts/IPlugin.cs']]) {
     const template = starters.find(item => item.id === id);
@@ -370,20 +371,19 @@ test('writes CMake dependency declarations and opt-in C or GoogleTest examples',
 
 test('uses the CMake picker entries as editable dependencies and packages a Vulkan desktop app', async t => {
   const root = await fixture(t);
-  const cpp = starters.find(template => template.id === 'sdl-vulkan-cpp');
-  const c = starters.find(template => template.id === 'sdl-vulkan-c');
+  const cpp = starters.find(template => template.id === 'sdl');
   const raylib = starters.find(template => template.id === 'raylib-cpp');
-  const choices = projectOptions(cpp).libraries;
+  const choices = projectOptions(cpp).languageOptions.cpp.libraries;
   const ids = choices.map(choice => choice.id);
   const lines = ids.map(id => choices.find(choice => choice.id === id).line);
-  assert.deepEqual(projectOptions(c).libraries.map(choice => choice.id), ['yyjson', 'stb', 'libuv', 'tinyfiledialogs']);
+  assert.deepEqual(projectOptions(cpp).languageOptions.c.libraries.map(choice => choice.id), ['yyjson', 'stb', 'libuv', 'tinyfiledialogs']);
   assert.throws(() => readProjectOptions(raylib, { dependencies: 'bgfx', targets: ['emscripten'] }), /desktop target/);
   assert.throws(() => readProjectOptions(cpp, { dependencies: 'tinyfiledialogs\ntinyfiledialogs' }), /Duplicate/);
-  const options = readProjectOptions(cpp, { dependencies: lines.join('\n') });
+  const options = readProjectOptions(cpp, { dependencies: lines.join('\n'), renderer: 'vulkan' });
   assert.deepEqual(options.packages.map(library => library.id), ids);
 
   const project = await createProject(root, 'Vulkan Distribution', async (target, parent) => {
-    await writeStarter(cpp, 'Vulkan Distribution', target, parent);
+    await writeStarter(cpp, 'Vulkan Distribution', target, parent, undefined, {}, options);
     await applyProjectOptions(target, cpp, 'Vulkan Distribution', options);
   });
   const cmake = await fs.readFile(path.join(project, 'cmake/ProjectOptions.cmake'), 'utf8');
@@ -527,7 +527,7 @@ test('converts raster icons for desktop and mobile project scaffolds', async t =
     const file = path.join(root, 'Example.' + format);
     await sharp({ create: { width: 48, height: 32, channels: 4, background: '#1388aaff' } }).toFormat(format).toFile(file);
     const icons = await loadExecutableIcons([file]);
-    for (const id of ['c-cmake', 'electron', 'android-compose', 'ios-swiftui', 'expo-mobile']) {
+    for (const id of ['c-cmake', 'electron', 'android-compose', 'android-views', 'ios-swiftui', 'ios-uikit', 'expo-mobile']) {
       const template = starters.find(item => item.id === id);
       const name = id + '-' + format;
       const options = readProjectOptions(template, { executableIcon: true }, icons);
@@ -535,11 +535,11 @@ test('converts raster icons for desktop and mobile project scaffolds', async t =
         await writeStarter(template, name, target, parent);
         await applyProjectOptions(target, template, name, options);
       });
-      if (id === 'android-compose') {
+      if (['android-compose', 'android-views'].includes(id)) {
         assert.match(await fs.readFile(path.join(project, 'src/main/AndroidManifest.xml'), 'utf8'), /@mipmap\/pw_app_icon/);
         const { width } = await sharp(path.join(project, 'src/main/res/mipmap-xxxhdpi/pw_app_icon.png')).metadata();
         assert.equal(width, 192);
-      } else if (id === 'ios-swiftui') {
+      } else if (['ios-swiftui', 'ios-uikit'].includes(id)) {
         const file = path.join(project, 'Sources/Assets.xcassets/AppIcon.appiconset/Icon-1024.png');
         const { width, height, hasAlpha } = await sharp(file).metadata();
         assert.deepEqual([width, height, hasAlpha], [1024, 1024, false]);
@@ -564,7 +564,7 @@ test('installs desktop icon assets for GUI and game starters', async t => {
   const image = path.join(root, 'icon.webp');
   await require('sharp')({ create: { width: 32, height: 32, channels: 4, background: '#1289aaff' } }).webp().toFile(image);
   const icons = await loadExecutableIcons([image]);
-  const templates = [...starters.filter(template => ['lua-love', 'unity', 'unreal', 'sfml-imgui-cpp', 'sdl-cpp', 'cpp-lua-desktop'].includes(template.id)),
+  const templates = [...starters.filter(template => ['lua-love', 'unity', 'unreal', 'sfml-imgui-cpp', 'sdl', 'cpp-lua-desktop'].includes(template.id)),
     parseMonoGameTemplates('MonoGame DesktopGL  mgdesktopgl  [C#]  MonoGame')[0]];
   for (const template of templates) {
     const build = template.sfml ? 'sfml2' : template.sdl ? 'sdl2' : undefined;
@@ -679,7 +679,7 @@ test('preserves mobile dependencies and adds selected npm packages and tests', a
 test('pairs every C starter with a C++ CMake build', async t => {
   const root = await fixture(t);
   const cTemplates = starters.filter(template => template.language === 'C' && template.cmakeTarget);
-  assert.ok(cTemplates.length >= 5);
+  assert.ok(cTemplates.length >= 2);
   for (const c of cTemplates) {
     const cppId = c.id === 'c-cmake' ? 'cpp-cmake' : c.id.replace(/-c$/, '-cpp');
     const cpp = starters.find(template => template.id === cppId);
@@ -732,36 +732,84 @@ test('offers assembly for matching architectures and kernel modules on Linux onl
   }
 });
 
-test('offers OpenGL and Vulkan for both SDL versions and checks Vulkan setup', async t => {
+test('offers both SDL versions and all compatible renderers from one project entry', async t => {
   const root = await fixture(t);
-  const tools = { cmake: {}, 'c-compiler': {}, 'cpp-compiler': {} };
+  const tools = { cmake: {}, 'c-compiler': {}, 'cpp-compiler': {}, 'windows-directx-sdk': {} };
+  const [template] = starters.filter(item => item.sdl);
+  assert.equal(starters.filter(item => item.sdl).length, 1);
+  const windows = projectOptions(template, tools, [], 'win32');
+  assert.equal(windows.buildChoice.defaultId, 'sdl3');
+  assert.deepEqual(windows.buildChoice.options.map(option => option.id), ['sdl3', 'sdl2']);
+  assert.deepEqual(windows.rendererChoice.options.map(option => option.id), ['default', 'vulkan', 'opengl', 'dx11', 'dx12']);
+  assert.deepEqual(windows.rendererChoice.options.find(option => option.id === 'vulkan').missing.map(tool => tool.id), ['vulkan-dev']);
+  for (const platform of ['darwin', 'linux']) {
+    assert.deepEqual(projectOptions(template, tools, [], platform).rendererChoice.options.map(option => option.id), ['default', 'vulkan', 'opengl']);
+    assert.throws(() => readProjectOptions(template, { renderer: 'dx12' }, undefined, platform), /supported renderer/);
+  }
   for (const major of [2, 3]) {
-    for (const [api, label, target] of [['', '', ''], ['opengl', 'OpenGL', 'OpenGL::GL'], ['vulkan', 'Vulkan', 'Vulkan::Vulkan']]) {
-      for (const [suffix, language] of [['c', 'C'], ['cpp', 'C++']]) {
-        const id = ['sdl', api, suffix].filter(Boolean).join('-');
-        const template = starters.find(item => item.id === id);
-        assert.equal(template.label, `SDL${label ? ' + ' + label : ''} for ${language}`);
-        const chooser = projectOptions(template, tools, [], 'win32').buildChoice;
-        assert.equal(chooser.defaultId, 'sdl3');
-        assert.deepEqual(chooser.options.map(option => option.id), ['sdl3', 'sdl2']);
-        assert.ok(chooser.options.every(option => option.ready === (api !== 'vulkan')));
-        const withVulkan = projectOptions(template, { ...tools, 'vulkan-dev': {} }, [], 'win32').buildChoice;
-        assert.ok(withVulkan.options.every(option => option.ready));
-        if (api === 'vulkan') assert.deepEqual(chooser.options[0].missing.map(tool => tool.id), ['vulkan-dev']);
-
-        const name = id + '-' + major;
-        const options = readProjectOptions(template, { build: 'sdl' + major });
+    for (const [renderer, target] of [['default', ''], ['opengl', 'OpenGL::GL'], ['vulkan', 'Vulkan::Vulkan'], ['dx11', ''], ['dx12', '']]) {
+      for (const language of ['c', 'cpp']) {
+        const name = `sdl${major}-${renderer}-${language}`;
+        const options = readProjectOptions(template, { build: 'sdl' + major, renderer, language, testing: true }, undefined, 'win32');
+        assert.equal(options.framework, language === 'c' ? 'ctest' : 'gtest');
         const project = await createProject(root, name, (destination, parent) =>
           writeStarter(template, name, destination, parent, undefined, {}, options));
         const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
         assert.ok(cmake.includes(`SDL${major}::SDL${major}-static${target ? ' ' + target : ''}`));
         assert.doesNotMatch(cmake, /__SDL_[A-Z]+__/);
-        const source = await fs.readFile(path.join(project, 'src', `main.${suffix}`), 'utf8');
+        const source = await fs.readFile(path.join(project, 'src', `main.${language}`), 'utf8');
         assert.match(source, /starter_add\(/);
         assert.match(source, major === 3 ? /SDL_EVENT_QUIT/ : /SDL_QUIT/);
         assert.doesNotMatch(source, major === 3 ? /\bSDL_QUIT\b/ : /SDL_EVENT_QUIT/);
+        if (renderer.startsWith('dx')) {
+          assert.ok(source.includes('"direct3d' + renderer.slice(2) + '"'));
+          assert.match(cmake, /requires Windows/);
+        }
       }
     }
+  }
+});
+
+test('chooses Qt versions per detected interface and scaffolds both majors', async t => {
+  const root = await fixture(t);
+  const template = starters.find(item => item.id === 'qt');
+  const choices = projectOptions(template, { cmake: {}, 'cpp-compiler': {}, 'qt5-quick': { version: '5.15.15' } });
+  assert.equal(choices.rendererChoice.defaultId, 'quick');
+  assert.equal(choices.buildChoice.defaultId, 'qt5');
+  assert.equal(choices.buildChoice.options.find(option => option.id === 'qt5').label, 'Qt 5.15.15');
+  assert.equal(choices.buildsByRenderer.widgets.options.every(option => !option.ready), true);
+  for (const major of [5, 6]) {
+    const name = 'Qt Quick ' + major;
+    const options = readProjectOptions(template, { renderer: 'quick', build: 'qt' + major });
+    const project = await createProject(root, name, async (target, parent) => {
+      await writeStarter(template, name, target, parent, undefined, {}, options);
+      await applyProjectOptions(target, template, name, options, parent);
+    });
+    assert.match(await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8'), new RegExp('Qt' + major + '::Quick'));
+    assert.match(await fs.readFile(path.join(project, 'Main.qml'), 'utf8'), major === 5 ? /import QtQuick 2\.15/ : /import QtQuick\n/);
+    const distribution = await fs.readFile(path.join(project, 'cmake/Distribution.cmake'), 'utf8');
+    assert.match(distribution, new RegExp('if\\("Qt' + major + '" STREQUAL "Qt6" AND'));
+    const code = await fs.readFile(path.join(project, 'src/main.cpp'), 'utf8');
+    assert.match(code, major === 5 ? /qrc:\/Main.qml/ : /loadFromModule/);
+  }
+});
+
+test('scaffolds native Apple starters on macOS and packages both AppKit variants', async t => {
+  const root = await fixture(t);
+  const apple = starters.filter(item => ['ios-swiftui', 'ios-uikit', 'objc-desktop', 'objc-cpp-desktop'].includes(item.id));
+  assert.equal(templatesForPlatform(apple, 'darwin').length, 4);
+  assert.equal(templatesForPlatform(apple, 'win32').length, 0);
+  for (const template of apple.filter(item => item.language === 'Objective-C')) {
+    const options = readProjectOptions(template);
+    const name = template.id;
+    const project = await createProject(root, name, async (target, parent) => {
+      await writeStarter(template, name, target, parent, undefined, {}, options);
+      await applyProjectOptions(target, template, name, options, parent);
+    });
+    const packaging = await fs.readFile(path.join(project, 'scripts/package-macos.sh'), 'utf8');
+    const mixed = name === 'objc-cpp-desktop';
+    assert.match(packaging, mixed ? /clang\+\+.*main\.mm counter\.cpp/ : /clang -fobjc-arc main\.m/);
+    assert.match(await fs.readFile(path.join(project, mixed ? 'main.mm' : 'main.m'), 'utf8'), /NSApplication/);
   }
 });
 
@@ -992,8 +1040,10 @@ test('keeps VR opt-in and applies language and template settings independently',
   assert.deepEqual(enabled.filter(template => template.group === 'vr').map(template => template.id),
     ['raylib-vr-android-cpp', 'kotlin-android-xr']);
   const oldSdlSettings = readCatalogSettings({ disabledTemplates: ['sdl2-vulkan-cpp', 'sdl3-vulkan-cpp', 'sdl2-cpp'] });
-  assert.ok(!enabledTemplates(templates, oldSdlSettings).some(template => template.id === 'sdl-vulkan-cpp'));
-  assert.ok(enabledTemplates(templates, oldSdlSettings).some(template => template.id === 'sdl-cpp'));
+  assert.ok(enabledTemplates(templates, oldSdlSettings).some(template => template.id === 'sdl'));
+  const disabled = readCatalogSettings({ disabledTemplates: ['qt-quick', 'qt-widgets'], hideUnavailableTemplates: false });
+  assert.equal(disabled.hideUnavailableTemplates, false);
+  assert.ok(!enabledTemplates(templates, disabled).some(template => template.id === 'qt'));
 });
 
 test('keeps Android CMake sample tests on the host', async t => {

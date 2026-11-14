@@ -1,0 +1,4 @@
+storage_account_name = "replacewithyouraccount"
+container_name       = "terraform-state"
+key                  = "bootstrap/dev-scan-access/terraform.tfstate"
+use_azuread_auth     = true

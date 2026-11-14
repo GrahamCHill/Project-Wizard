@@ -1,0 +1,4 @@
+project_name = "__PROJECT_SLUG__"
+environment  = "dev"
+network_cidr = "10.40.0.0/16"
+queue_name   = "documents"

@@ -361,6 +361,17 @@ async function unrealMacIcon(project, raster) {
 }
 
 async function configureDesktopApp(project, template, name, options, icons, raster) {
+  if (template.id === 'wails') {
+    if (!raster) return;
+    await fs.writeFile(path.join(project, 'build', 'appicon.png'), await raster.png(1024));
+    if (options.build === 'wails2') {
+      // Wails 2 generates its ICO only when the file does not already exist.
+      await fs.rm(path.join(project, 'build', 'windows', 'icon.ico'), { force: true });
+      await saveAssets(project, icons);
+      await linuxLauncher(project, name);
+    }
+    return appendReadme(project, 'The packaging tools use the image in `build/appicon.png` to generate platform icons.');
+  }
   if (template.id === 'tauri') {
     if (!icons.size) return;
     await tauriIcons(project, icons, raster);

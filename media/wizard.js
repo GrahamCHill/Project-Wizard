@@ -26,7 +26,8 @@ const recentList = byId('recent-project-list');
 const groupTitles = {
   all: 'Templates', cli: 'Command Line', desktop: 'Desktop', mobile: 'Mobile', graphics: 'Graphics', frontend: 'Web Frontend', server: 'Web Server',
   monogame: 'MonoGame', raylib: 'Raylib', games: 'Game Engines', blender: 'Blender', ai: 'ML & AI',
-  documents: 'Documents', zip: 'Custom ZIPs', vr: 'VR', systems: 'Systems'
+  documents: 'Documents', zip: 'Custom ZIPs', vr: 'VR', systems: 'Systems', docker: 'Docker',
+  infrastructure: 'Infrastructure'
 };
 
 let catalog;
@@ -82,13 +83,13 @@ function openSettings() {
   byId('enable-vr').checked = settings.enableVrTemplates;
   byId('enable-latex').checked = settings.enableLatexTemplates;
   settingsSearch.value = '';
-  const languages = [...new Set(availableTemplates.map(template => template.language).filter(Boolean))].sort();
+  const languages = [...new Set(availableTemplates.flatMap(template => [template.language, ...(template.variantLanguages || [])]).filter(Boolean))].sort();
   settingsLanguages.replaceChildren(...languages.map(language =>
     checkboxLabel(language, language, !catalogDraft.disabledLanguages.has(language))));
   const templates = [...availableTemplates].sort((a, b) => a.label.localeCompare(b.label));
   settingsTemplates.replaceChildren(...templates.map(template => {
     const label = checkboxLabel(template.id, template.label, !catalogDraft.disabledTemplates.has(template.id));
-    label.dataset.search = searchText(`${template.label} ${template.language || ''} ${groupTitles[template.group] || ''}`);
+    label.dataset.search = searchText(`${template.label} ${template.language || ''} ${template.variantLanguages?.join(' ') || ''} ${groupTitles[template.group] || ''}`);
     return label;
   }));
   filterSettingsTemplates();
@@ -357,7 +358,7 @@ function updateForm() {
   const missingIcon = updateExecutableIcon(targets);
   byId('target-choice-help').hidden = !missingTarget;
   byId('create').disabled = pending || checkingGit || !template || template.disabled || !name.trim() || !location ||
-    !environmentReady || missingTarget || missingIcon;
+    !environmentReady || missingTarget || missingIcon || selectedBuild()?.canCreate === false;
   byId('refresh').disabled = pending || !catalog;
   byId('settings').disabled = pending || !catalog;
   for (const control of [nameInput, locationInput, openMode, byId('browse'), byId('choose-zip'), byId('install')]) {
@@ -380,10 +381,11 @@ function templateButton(template) {
   button.append(title);
 
   const status = template.ready === false ? 'Setup needed' : '';
-  if (template.language || status) {
+  const language = template.language || template.variantLanguages?.join(' / ');
+  if (language || status) {
     const metadata = document.createElement('span');
     metadata.className = 'language';
-    metadata.textContent = [template.language, status].filter(Boolean).join(' · ');
+    metadata.textContent = [language, status].filter(Boolean).join(' · ');
     button.append(metadata);
   }
 
@@ -421,13 +423,14 @@ function updateCatalog({ preserveSelection = false } = {}) {
   }
 
   const categoryTemplates = (catalog?.templates || []).filter(template => group === 'all' || template.group === group);
-  const languages = [...new Set(categoryTemplates.map(template => template.language).filter(Boolean))].sort();
+  const languages = [...new Set(categoryTemplates.flatMap(template => [template.language, ...(template.variantLanguages || [])]).filter(Boolean))].sort();
   const previousLanguage = languageSelect.value;
   languageSelect.replaceChildren(new Option('All languages', ''), ...languages.map(language => new Option(language, language)));
   if (languages.includes(previousLanguage)) languageSelect.value = previousLanguage;
   const query = searchText(search.value.trim());
   visibleTemplates = categoryTemplates.filter(template =>
-    (!languageSelect.value || template.language === languageSelect.value) && (!readyOnly.checked || template.ready) &&
+    (!languageSelect.value || template.language === languageSelect.value || template.variantLanguages?.includes(languageSelect.value)) &&
+    (!readyOnly.checked || template.ready) &&
     searchText(`${template.label} ${template.language || ''} ${template.description}`).includes(query))
     .sort((first, second) => Number(Boolean(second.ready)) - Number(Boolean(first.ready)));
   if (!visibleTemplates.some(template => template.id === selected) && !(preserveSelection && loading && selected)) {

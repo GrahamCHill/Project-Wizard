@@ -1,0 +1,26 @@
+services:
+  app:
+    environment:
+      PGHOST: postgres
+      PGDATABASE: rag
+      PGUSER: rag
+      PGPASSWORD: ${RAG_DB_PASSWORD:-local-rag-example}
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: rag
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: ${RAG_DB_PASSWORD:-local-rag-example}
+    volumes:
+      - vectors:/var/lib/postgresql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-rag.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "rag", "-d", "rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+volumes:
+  vectors:

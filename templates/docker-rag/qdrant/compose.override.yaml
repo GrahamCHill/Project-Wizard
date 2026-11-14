@@ -1,0 +1,13 @@
+services:
+  app:
+    environment:
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      qdrant:
+        condition: service_started
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    volumes:
+      - vectors:/qdrant/storage
+volumes:
+  vectors:

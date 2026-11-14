@@ -1,0 +1,8 @@
+services:
+  app:
+    environment:
+      MODEL_PATH: ${MODEL_PATH:-}
+      MODEL_URL: ${MODEL_URL:-}
+      MODEL_SHA256: ${MODEL_SHA256:-}
+    volumes:
+      - ./models:/models:ro

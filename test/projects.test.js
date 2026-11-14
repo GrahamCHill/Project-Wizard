@@ -163,7 +163,7 @@ test('generates the bundled source templates with portable names and run instruc
     const project = await createProject(parent, name, (target, directory) => writeStarter(template, name, target, directory));
     for (const file of template.files) {
       const output = file === 'gitignore' ? '.gitignore' :
-        template.language === 'C++' && template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
+        template.language === 'C++' && file === 'src/main.c' ? 'src/main.cpp' : file;
       const moduleName = 'Game9ExampleProject';
       const generated = path.join(project, replaceTokens(output, name).replaceAll('__UNREAL_MODULE__', moduleName));
       assert.doesNotMatch(await fs.readFile(generated, 'utf8'), /__PROJECT_[A-Z]+__/);
@@ -213,6 +213,9 @@ test('recognizes web, desktop, and game project files', () => {
   assert.deepEqual(detectFrameworks('package.json', '{invalid'), []);
   assert.deepEqual(detectFrameworks('tauri.conf.json', '{"productName":"Example"}'), ['Tauri']);
   assert.deepEqual(detectFrameworks('CMakeLists.txt', 'pkg_check_modules(GTKMM REQUIRED IMPORTED_TARGET gtkmm-4.0)'), ['GTKmm 4']);
+  assert.deepEqual(detectFrameworks('CMakeLists.txt', 'FetchContent_Declare(sdl2\n  URL example.tar.gz)\ntarget_link_libraries(app SDL2::SDL2-static)'), ['SDL 2']);
+  assert.deepEqual(detectFrameworks('go.mod', 'require github.com/wailsapp/wails/v2 v2.17.1'), ['Wails 2']);
+  assert.deepEqual(detectFrameworks('go.mod', 'require (\n\tgithub.com/wailsapp/wails/v3 v3.0.0\n)'), ['Wails 3']);
   assert.deepEqual(detectFrameworks('project.godot', 'config_version=5'), ['Godot']);
   assert.deepEqual(detectFrameworks('ProjectVersion.txt', 'm_EditorVersion: 6000.3.0f1'), ['Unity']);
   assert.deepEqual(detectFrameworks('Game.uproject', '{"FileVersion":3}'), ['Unreal Engine']);
@@ -367,8 +370,8 @@ test('writes CMake dependency declarations and opt-in C or GoogleTest examples',
 
 test('uses the CMake picker entries as editable dependencies and packages a Vulkan desktop app', async t => {
   const root = await fixture(t);
-  const cpp = starters.find(template => template.id === 'sdl3-vulkan-cpp');
-  const c = starters.find(template => template.id === 'sdl3-vulkan-c');
+  const cpp = starters.find(template => template.id === 'sdl-vulkan-cpp');
+  const c = starters.find(template => template.id === 'sdl-vulkan-c');
   const raylib = starters.find(template => template.id === 'raylib-cpp');
   const choices = projectOptions(cpp).libraries;
   const ids = choices.map(choice => choice.id);
@@ -561,10 +564,11 @@ test('installs desktop icon assets for GUI and game starters', async t => {
   const image = path.join(root, 'icon.webp');
   await require('sharp')({ create: { width: 32, height: 32, channels: 4, background: '#1289aaff' } }).webp().toFile(image);
   const icons = await loadExecutableIcons([image]);
-  const templates = [...starters.filter(template => ['lua-love', 'unity', 'unreal', 'sfml-imgui-cpp', 'sdl2-cpp', 'cpp-lua-desktop'].includes(template.id)),
+  const templates = [...starters.filter(template => ['lua-love', 'unity', 'unreal', 'sfml-imgui-cpp', 'sdl-cpp', 'cpp-lua-desktop'].includes(template.id)),
     parseMonoGameTemplates('MonoGame DesktopGL  mgdesktopgl  [C#]  MonoGame')[0]];
   for (const template of templates) {
-    const options = readProjectOptions(template, { executableIcon: true, ...(template.sfml ? { build: 'sfml2' } : {}) }, icons);
+    const build = template.sfml ? 'sfml2' : template.sdl ? 'sdl2' : undefined;
+    const options = readProjectOptions(template, { executableIcon: true, build }, icons);
     const name = template.shortName || template.id;
     const project = await createProject(root, name, async (target, parent) => {
       if (template.group === 'monogame') {
@@ -578,6 +582,7 @@ test('installs desktop icon assets for GUI and game starters', async t => {
       const code = await fs.readFile(path.join(project, 'src/main.cpp'), 'utf8');
       assert.match(code, /#include "app_icon.h"/);
       if (template.sfml) assert.match(code, /window\.setIcon\(48, 48, app_icon_pixels\)/);
+      if (template.sdl) assert.match(code, /SDL_CreateRGBSurfaceWithFormatFrom\(/);
       continue;
     }
     assert.ok(await fs.stat(path.join(project, 'scripts/install-linux-icon.sh')));
@@ -731,24 +736,142 @@ test('offers OpenGL and Vulkan for both SDL versions and checks Vulkan setup', a
   const root = await fixture(t);
   const tools = { cmake: {}, 'c-compiler': {}, 'cpp-compiler': {} };
   for (const major of [2, 3]) {
-    for (const [api, label, target] of [['opengl', 'OpenGL', 'OpenGL::GL'], ['vulkan', 'Vulkan', 'Vulkan::Vulkan']]) {
+    for (const [api, label, target] of [['', '', ''], ['opengl', 'OpenGL', 'OpenGL::GL'], ['vulkan', 'Vulkan', 'Vulkan::Vulkan']]) {
       for (const [suffix, language] of [['c', 'C'], ['cpp', 'C++']]) {
-        const id = `sdl${major}-${api}-${suffix}`;
+        const id = ['sdl', api, suffix].filter(Boolean).join('-');
         const template = starters.find(item => item.id === id);
-        assert.equal(template.label, `SDL${major} + ${label} for ${language}`);
-        const missing = templateAvailability(template, tools, 'win32').missing.map(tool => tool.id);
-        assert.deepEqual(missing, api === 'vulkan' ? ['vulkan-dev'] : []);
-        assert.ok(templateAvailability(template, { ...tools, 'vulkan-dev': {} }, 'win32').ready);
+        assert.equal(template.label, `SDL${label ? ' + ' + label : ''} for ${language}`);
+        const chooser = projectOptions(template, tools, [], 'win32').buildChoice;
+        assert.equal(chooser.defaultId, 'sdl3');
+        assert.deepEqual(chooser.options.map(option => option.id), ['sdl3', 'sdl2']);
+        assert.ok(chooser.options.every(option => option.ready === (api !== 'vulkan')));
+        const withVulkan = projectOptions(template, { ...tools, 'vulkan-dev': {} }, [], 'win32').buildChoice;
+        assert.ok(withVulkan.options.every(option => option.ready));
+        if (api === 'vulkan') assert.deepEqual(chooser.options[0].missing.map(tool => tool.id), ['vulkan-dev']);
 
-        const project = await createProject(root, id, (destination, parent) => writeStarter(template, id, destination, parent));
+        const name = id + '-' + major;
+        const options = readProjectOptions(template, { build: 'sdl' + major });
+        const project = await createProject(root, name, (destination, parent) =>
+          writeStarter(template, name, destination, parent, undefined, {}, options));
         const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
-        assert.ok(cmake.includes(`SDL${major}::SDL${major}-static ${target}`));
-        assert.ok(cmake.includes(`STARTER_SDL_MAJOR=${major}`));
+        assert.ok(cmake.includes(`SDL${major}::SDL${major}-static${target ? ' ' + target : ''}`));
         assert.doesNotMatch(cmake, /__SDL_[A-Z]+__/);
-        assert.match(await fs.readFile(path.join(project, 'src', `main.${suffix}`), 'utf8'), /starter_add\(/);
+        const source = await fs.readFile(path.join(project, 'src', `main.${suffix}`), 'utf8');
+        assert.match(source, /starter_add\(/);
+        assert.match(source, major === 3 ? /SDL_EVENT_QUIT/ : /SDL_QUIT/);
+        assert.doesNotMatch(source, major === 3 ? /\bSDL_QUIT\b/ : /SDL_EVENT_QUIT/);
       }
     }
   }
+});
+
+test('offers the Wails generator that can run and writes its packaging icon', async t => {
+  const root = await fixture(t);
+  const template = starters.find(item => item.id === 'wails');
+  const tools = { 'wails-go': {}, wails2: {}, 'vite-node': {}, npm: {} };
+  const windows = projectOptions(template, tools, [], 'win32').buildChoice;
+  assert.equal(windows.defaultId, 'wails2');
+  assert.equal(windows.options[0].canCreate, false);
+  assert.equal(windows.options[1].canCreate, true);
+  assert.equal(windows.options[1].ready, false);
+  assert.equal(projectOptions(template, { ...tools, 'wails-webview': {} }, [], 'win32').buildChoice.options[1].ready, true);
+  assert.deepEqual(projectOptions(template, { ...tools, wails3: {} }, [], 'linux').buildChoice.options.map(choice =>
+    choice.missing.map(tool => tool.id)), [['wails3-linux'], ['wails2-linux']]);
+
+  const image = path.join(root, 'app.webp');
+  const sharp = require('sharp');
+  await sharp({ create: { width: 32, height: 32, channels: 4, background: '#1289aaff' } }).webp().toFile(image);
+  const icons = await loadExecutableIcons([image]);
+  const options = readProjectOptions(template, { build: 'wails3', executableIcon: true }, icons);
+  await fs.mkdir(path.join(root, 'build'));
+  await applyProjectOptions(root, template, 'Wails sample', options);
+  const icon = await sharp(path.join(root, 'build/appicon.png')).metadata();
+  assert.equal(icon.format, 'png');
+  assert.equal(icon.width, 1024);
+});
+
+test('writes runnable ML and AI examples with project-local environment instructions', async t => {
+  const root = await fixture(t);
+  for (const [id, script, dependency] of [
+    ['ml-pytorch-digits', 'train.py', 'torch'],
+    ['ml-onnx', 'export_model.py', 'onnxruntime'],
+    ['ml-forecasting', 'forecast.py', 'scikit-learn'],
+    ['ai-ollama-rag', 'ask.py', undefined]
+  ]) {
+    const template = starters.find(item => item.id === id);
+    const options = readProjectOptions(template, { environment: 'venv' });
+    const project = await createProject(root, id, async (target, parent) => {
+      await writeStarter(template, id, target, parent);
+      await applyProjectOptions(target, template, id, options, parent);
+    });
+    assert.ok(await fs.stat(path.join(project, script)));
+    const readme = await fs.readFile(path.join(project, 'README.md'), 'utf8');
+    assert.ok(readme.includes(script));
+    assert.match(readme, /\.venv/);
+    if (dependency) assert.ok((await fs.readFile(path.join(project, 'requirements.txt'), 'utf8')).includes(dependency));
+    if (id === 'ai-ollama-rag') assert.ok(await fs.stat(path.join(project, 'docs/support.md')));
+  }
+});
+
+test('scaffolds each Compose starter and validates its framework and language choices', async t => {
+  const root = await fixture(t);
+  const tools = { docker: {}, 'docker-compose': {}, 'docker-linux': {} };
+  const docker = starters.filter(template => template.group === 'docker');
+  const spring = docker.find(template => template.id === 'docker-spring');
+  const settings = readCatalogSettings({ disabledLanguages: ['Java'] });
+  const [kotlinOnly] = enabledTemplates([spring], settings);
+  assert.deepEqual(projectOptions(kotlinOnly, tools).buildChoice.options.map(option => option.id), ['kotlin']);
+  assert.throws(() => readProjectOptions(kotlinOnly, { build: 'java' }), /supported build option/);
+  for (const template of docker) {
+    assert.equal(templateAvailability(template, tools, 'win32').ready, true);
+    assert.equal(templateAvailability(template, { ...tools, 'docker-linux': undefined }, 'win32').ready, false);
+    for (const variant of template.variants || [{}]) {
+      const name = template.id + (variant.id ? '-' + variant.id : '');
+      const options = readProjectOptions(template, { build: variant.id });
+      const folder = await createProject(root, name, (target, parent) =>
+        writeStarter(template, name, target, parent, undefined, {}, options));
+      const compose = await fs.readFile(path.join(folder, 'compose.yaml'), 'utf8');
+      assert.match(compose, /127\.0\.0\.1:\$\{(?:APP|QDRANT)_PORT:-\d+\}/);
+      assert.match(await fs.readFile(path.join(folder, 'README.md'), 'utf8'), /docker compose up/);
+      if (variant.files) {
+        for (const file of variant.files) assert.ok((await fs.stat(path.join(folder, file))).isFile());
+      }
+      if (template.language === 'Python') {
+        assert.match(await fs.readFile(path.join(folder, 'Dockerfile'), 'utf8'), /python -m venv \/opt\/venv/);
+      }
+      if (template.id === 'docker-rag') {
+        const override = await fs.readFile(path.join(folder, 'compose.override.yaml'), 'utf8');
+        const storage = await fs.readFile(path.join(folder, 'vector_store.py'), 'utf8');
+        if (variant.id === 'pgvector') {
+          assert.match(override, /image: pgvector\/pgvector:pg18/);
+          assert.doesNotMatch(override, /\bqdrant\b/);
+          assert.match(storage, /ORDER BY embedding <=>/);
+          assert.match(await fs.readFile(path.join(folder, 'db/init.sql'), 'utf8'), /CREATE EXTENSION IF NOT EXISTS vector/);
+        } else {
+          assert.match(override, /image: qdrant\/qdrant/);
+          assert.doesNotMatch(override, /\bpostgres\b/);
+          assert.match(storage, /\/points\/query/);
+        }
+      }
+    }
+  }
+});
+
+test('scaffolds Terraform environment, bootstrap roots, and reusable modules', async t => {
+  const root = await fixture(t);
+  const template = starters.find(item => item.id === 'terraform-infrastructure');
+  assert.equal(templateAvailability(template, {}, 'win32').missing[0].id, 'terraform');
+  assert.equal(templateAvailability(template, { terraform: {} }, 'linux').ready, true);
+  const name = 'Sample Infrastructure';
+  const project = await createProject(root, name, (target, parent) => writeStarter(template, name, target, parent));
+  for (const file of template.files.filter(file => file !== 'gitignore')) {
+    assert.ok((await fs.stat(path.join(project, file))).isFile());
+  }
+  const configuration = await fs.readFile(path.join(project, 'infra/envs/dev/main.tf'), 'utf8');
+  assert.match(configuration, /"\.\.\/\.\.\/modules\/private_network"/);
+  assert.match(configuration, /"\.\.\/\.\.\/modules\/ingestion"/);
+  assert.match(await fs.readFile(path.join(project, 'infra/envs/dev/terraform.tfvars.example'), 'utf8'), /"sample-infrastructure"/);
+  await assert.rejects(fs.stat(path.join(project, 'infra/envs/dev/backend.tf')), { code: 'ENOENT' });
 });
 
 test('scaffolds both SFML desktop projects and keeps the ImGui backend on one version', async t => {
@@ -868,6 +991,9 @@ test('keeps VR opt-in and applies language and template settings independently',
   assert.ok(enabled.some(template => template.id === 'lua-cli'));
   assert.deepEqual(enabled.filter(template => template.group === 'vr').map(template => template.id),
     ['raylib-vr-android-cpp', 'kotlin-android-xr']);
+  const oldSdlSettings = readCatalogSettings({ disabledTemplates: ['sdl2-vulkan-cpp', 'sdl3-vulkan-cpp', 'sdl2-cpp'] });
+  assert.ok(!enabledTemplates(templates, oldSdlSettings).some(template => template.id === 'sdl-vulkan-cpp'));
+  assert.ok(enabledTemplates(templates, oldSdlSettings).some(template => template.id === 'sdl-cpp'));
 });
 
 test('keeps Android CMake sample tests on the host', async t => {

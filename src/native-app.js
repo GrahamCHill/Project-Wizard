@@ -15,7 +15,7 @@ function executableIconFormats(template) {
   if (!template) return [];
   if (mobileIconTemplate(template)) return ['.png', '.webp'];
   if (template.id === 'flutter-desktop') return ['.png', '.webp', '.ico'];
-  if (template.id === 'unity') return ['.png', '.webp'];
+  if (template.id === 'unity' || template.id === 'wails') return ['.png', '.webp'];
   if (desktopMonoGame(template) && /^mgwindows/i.test(template.shortName)) return ['.png', '.webp', '.ico'];
   const desktop = template.group === 'desktop' || template.sdlBackend || (template.group === 'raylib' && template.language === 'C#') ||
     template.group === 'games' || template.id === 'lua-love' || desktopMonoGame(template);

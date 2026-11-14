@@ -16,5 +16,4 @@ find_package(OpenGL REQUIRED)
 
 add_executable(app src/main.__NATIVE_EXTENSION__)
 target_compile_features(app PRIVATE __NATIVE_STANDARD__)
-target_compile_definitions(app PRIVATE STARTER_SDL_MAJOR=__SDL_MAJOR__)
 target_link_libraries(app PRIVATE SDL__SDL_MAJOR__::SDL__SDL_MAJOR__-static OpenGL::GL)

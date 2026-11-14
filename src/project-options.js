@@ -13,6 +13,8 @@ const { iconVariants } = require('./icon-data');
 const { configureDesktopApp } = require('./desktop-icons');
 const { configureMobileIcons } = require('./mobile-icons');
 const { sfmlVersions } = require('./sfml');
+const { sdlVersions } = require('./sdl');
+const { wailsVersions } = require('./wails');
 const { templateAvailability } = require('./toolchains');
 
 const npmTemplates = ['javascript-frontend', 'javascript-server', 'typescript-frontend', 'expo-mobile', 'electron'];
@@ -44,10 +46,12 @@ const javaBuilds = [
 ];
 
 function buildChoice(label, choices, tools, platform, manager) {
-  const options = choices.map(({ id, label, requirement, ...requirements }) => ({
-    id, label, requirement, ...templateAvailability(requirements, tools, platform, manager)
+  const options = choices.map(({ id, label, requirement, generatorTools, ...requirements }) => ({
+    id, label, requirement, ...templateAvailability(requirements, tools, platform, manager),
+    canCreate: generatorTools?.every(tool => tools[tool] && tools[tool].usable !== false)
   }));
-  return { label, options, defaultId: (options.find(option => option.ready) || options[0]).id };
+  return { label, options, defaultId: (options.find(option => option.ready) ||
+    options.find(option => option.canCreate) || options[0]).id };
 }
 
 function projectOptions(template, tools = {}, versions = [], platform = process.platform, manager) {
@@ -67,6 +71,13 @@ function nativeOptionsTemplate(template) {
 }
 
 function buildOptions(template, tools, versions, platform, manager) {
+  if (template.docker) {
+    if (template.variants) return { type: 'docker', buildChoice: buildChoice(template.choiceLabel,
+      template.variants.map(({ id, label }) => ({ id, label, tools: template.tools, requirement: template.requirement })),
+      tools, platform, manager) };
+    return;
+  }
+  if (template.id === 'wails') return { type: 'app', buildChoice: buildChoice('Wails version', wailsVersions, tools, platform, manager) };
   if (template.kind === 'react-native') return npmOptions;
   if (template.kind === 'npm-generator') return { ...npmOptions, ...testOptions('node', 'vitest') };
   if (template.kind === 'dotnet' || (template.language === 'C#' && template.needsSdk)) {
@@ -84,8 +95,10 @@ function buildOptions(template, tools, versions, platform, manager) {
   }
   if (template.kind !== 'starter') return;
   if (template.cmakeTarget) {
+    const graphicsVersion = template.sfml ? buildChoice('SFML version', sfmlVersions, tools, platform, manager) :
+      template.sdl ? buildChoice('SDL version', sdlVersions.map(version => ({ ...template, ...version })), tools, platform, manager) : undefined;
     return { type: 'cmake', libraries: cmakeChoices(template), libraryLabel: 'Common CMake libraries',
-      buildChoice: template.sfml ? buildChoice('SFML version', sfmlVersions, tools, platform, manager) : undefined,
+      buildChoice: graphicsVersion,
       dependencies: 'Additional CMake archives', example: 'name target https://example.com/library.tar.gz [sha256]',
       dependencyHint: 'Choose a preset to include a runnable example, or enter a custom archive. Use one line per dependency.',
       targetChoice: template.webTarget ? buildChoice('Target platforms', [

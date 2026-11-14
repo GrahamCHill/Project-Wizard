@@ -1,32 +1,27 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-const sdlIcon = [
-  '    #if SDL_MAJOR_VERSION >= 3',
-  '    SDL_Surface *icon = SDL_CreateSurfaceFrom(48, 48, SDL_PIXELFORMAT_RGBA32, app_icon_pixels, 48 * 4);',
-  '    #else',
-  '    SDL_Surface *icon = SDL_CreateRGBSurfaceWithFormatFrom(app_icon_pixels, 48, 48, 32, 48 * 4, SDL_PIXELFORMAT_RGBA32);',
-  '    #endif',
-  '    if (icon) {',
-  '        SDL_SetWindowIcon(window, icon);',
-  '    #if SDL_MAJOR_VERSION >= 3',
-  '        SDL_DestroySurface(icon);',
-  '    #else',
-  '        SDL_FreeSurface(icon);',
-  '    #endif',
-  '    }'
-].join('\n');
+const { sdlVersion } = require('./sdl');
 
 function windowIconCode(template, build) {
   if (template.sfml) {
     return ['    window.setFramerateLimit(60);', '    window.setIcon(' +
       (build === 'sfml2' ? '48, 48' : '{48, 48}') + ', app_icon_pixels);'];
   }
-  if (/^sdl[23]-/.test(template.id)) {
+  if (template.sdl) {
+    const sdl2 = sdlVersion(build).major === 2;
     const marker = template.id.includes('-vulkan-') ? '    VulkanApp app = { 0 };' :
       template.id.includes('-opengl-') ? '    SDL_GLContext context = SDL_GL_CreateContext(window);' :
-        template.id.startsWith('sdl2-') ? '    SDL_Renderer *renderer = SDL_CreateRenderer' : '    SDL_SetRenderVSync';
-    return [marker, sdlIcon, true];
+        sdl2 ? '    SDL_Renderer *renderer = SDL_CreateRenderer' : '    SDL_SetRenderVSync';
+    return [marker, [
+      sdl2 ?
+        '    SDL_Surface *icon = SDL_CreateRGBSurfaceWithFormatFrom(app_icon_pixels, 48, 48, 32, 48 * 4, SDL_PIXELFORMAT_RGBA32);' :
+        '    SDL_Surface *icon = SDL_CreateSurfaceFrom(48, 48, SDL_PIXELFORMAT_RGBA32, app_icon_pixels, 48 * 4);',
+      '    if (icon) {',
+      '        SDL_SetWindowIcon(window, icon);',
+      sdl2 ? '        SDL_FreeSurface(icon);' : '        SDL_DestroySurface(icon);',
+      '    }'
+    ].join('\n'), true];
   }
   if (template.group === 'raylib' || template.id === 'cpp-lua-desktop') {
     return ['    SetTargetFPS(60);', [

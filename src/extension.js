@@ -13,6 +13,7 @@ const { selectPython, setupPython } = require('./python-options');
 const { createReactNativeProject } = require('./react-native');
 const { createNpmProject } = require('./npm-generators');
 const { createExternalProject } = require('./external-generators');
+const { createWailsProject } = require('./wails');
 const { extractZipTemplate, listZipTemplates } = require('./zip-templates');
 const { readCatalogSettings, enabledTemplates } = require('./catalog');
 const { catalogCache } = require('./catalog-cache');
@@ -23,7 +24,7 @@ const { executableIconFormats, loadExecutableIcons } = require('./native-app');
 const configurationKey = 'projectWizard.zipTemplatesDirectory';
 const catalogKey = 'projectWizard.catalog';
 const minute = 60_000;
-const projectFiles = '**/{*.csproj,*.fsproj,*.vbproj,Directory.Packages.props,CMakeLists.txt,package.json,project.godot,*.uproject,ProjectVersion.txt,tauri.conf.json,blender_manifest.toml,composer.json,pubspec.yaml}';
+const projectFiles = '**/{*.csproj,*.fsproj,*.vbproj,Directory.Packages.props,CMakeLists.txt,package.json,project.godot,*.uproject,ProjectVersion.txt,tauri.conf.json,blender_manifest.toml,composer.json,pubspec.yaml,go.mod}';
 const generatedFiles = '**/{.git,node_modules,bin,obj,build,.next,.nuxt,.output,out,target,.godot,Library,Binaries,Intermediate,vendor,.dart_tool,.venv,.project-wizard-*}/**';
 
 function zipDirectory() {
@@ -107,6 +108,8 @@ function wizardHtml(webview, extensionUri) {
           <button type="button" data-group="vr" aria-pressed="false" hidden>VR</button>
           <button type="button" data-group="frontend" aria-pressed="false">Web Frontend</button>
           <button type="button" data-group="server" aria-pressed="false">Web Server</button>
+          <button type="button" data-group="docker" aria-pressed="false">Docker</button>
+          <button type="button" data-group="infrastructure" aria-pressed="false">Infrastructure</button>
           <button type="button" data-group="monogame" aria-pressed="false">MonoGame</button>
           <button type="button" data-group="raylib" aria-pressed="false">Raylib</button>
           <button type="button" data-group="zip" aria-pressed="false">Custom ZIPs</button>
@@ -389,9 +392,11 @@ function activate(context) {
     return send(session, {
       type: 'catalog', parent: location, separator: path.sep, openMode: session.openMode, refreshing,
       hasWorkspace: Boolean(vscode.workspace.workspaceFolders?.length),
-      settings, availableTemplates: availableTemplates.map(({ id, label, language, group }) => ({ id, label, language, group })),
+      settings, availableTemplates: availableTemplates.map(({ id, label, language, group, variants }) =>
+        ({ id, label, language, group, variantLanguages: variants?.map(variant => variant.language).filter(Boolean) })),
       templates: templates.map(template => ({
         id: template.id, group: template.group, label: template.label, language: template.language,
+        variantLanguages: template.variants?.map(variant => variant.language).filter(Boolean),
         description: template.description, requirement: template.requirement, ready: template.ready, missing: template.missing,
         options: template.options,
         disabled: Boolean((template.needsSdk && !sdk.version) || (template.kind === 'react-native' && !template.ready) ||
@@ -401,7 +406,7 @@ function activate(context) {
       detected: Object.entries(detected).filter(([id, result]) =>
         !['vite-node', 'expo-node', 'react-native-node', 'next-node', 'nuxt-node', 'electron-node',
           'android-gradle', 'android-xr-gradle', 'compose-gradle', 'java-17', 'kmp-gradle',
-          'godot-rust', 'laravel-php', 'ml-python', 'cmake-3.26', 'cmake-3.28', 'sfml2-desktop'].includes(id) && result)
+          'godot-rust', 'laravel-php', 'ml-python', 'cmake-3.26', 'cmake-3.28', 'sfml2-desktop', 'wails-go'].includes(id) && result)
         .map(([id, result]) => ({ label: toolchains[id].label, ...result }))
         .sort((a, b) => a.label.localeCompare(b.label)),
       sdkVersion: sdk.version, sdkError: sdk.error, monoError, monoCount: mono.length,
@@ -411,9 +416,10 @@ function activate(context) {
   }
 
   async function create(session, message) {
-    const template = session.templates.get(message.templateId);
+    const selected = session.templates.get(message.templateId);
     const settings = catalogSettings();
-    if (!template || !enabledTemplates([template], settings).length) throw new Error('Select a template from the list.');
+    const [template] = selected ? enabledTemplates([selected], settings) : [];
+    if (!template) throw new Error('Select a template from the list.');
     const options = readProjectOptions(template, message.options, session.executableIcons);
     const tools = session.tools;
     const python = options?.type === 'python' && selectPython(options, tools, session.pythonVersions, template);
@@ -431,6 +437,7 @@ function activate(context) {
       if (template.kind === 'react-native') await createReactNativeProject(message.name, project, tools, log);
       if (template.kind === 'npm-generator') await createNpmProject(template, message.name, project, tools, log);
       if (template.kind === 'external-generator') await createExternalProject(template, message.name, project, tools, log);
+      if (template.kind === 'wails') await createWailsProject(message.name, project, tools, options.build, log);
       if (template.kind === 'zip') await extractZipTemplate(template.archive, project, message.name);
       await applyProjectOptions(project, template, message.name, options, parent, log);
       await initializeProjectGit(project, parent, tools?.git?.file, message.initializeGit, log);

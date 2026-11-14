@@ -4,10 +4,29 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { promisify } = require('node:util');
+const { wailsVersions } = require('./wails');
 
 const exec = promisify(execFile);
 
 const toolchains = {
+  terraform: {
+    label: 'Terraform', url: 'https://developer.hashicorp.com/terraform/install',
+    instructions: 'Install a current Terraform release and add it to PATH. Then refresh templates.',
+    windows: 'winget install --exact --id Hashicorp.Terraform', macos: 'brew install hashicorp/tap/terraform'
+  },
+  docker: {
+    label: 'Docker CLI', url: 'https://docs.docker.com/get-started/get-docker/',
+    instructions: 'Install Docker Desktop or Docker Engine for your operating system.',
+    windows: 'winget install --exact --id Docker.DockerDesktop', macos: 'brew install --cask docker'
+  },
+  'docker-compose': {
+    label: 'Docker Compose', url: 'https://docs.docker.com/compose/install/',
+    instructions: 'Install the Docker Compose CLI plugin (included in Docker Desktop).'
+  },
+  'docker-linux': {
+    label: 'Linux Docker engine', url: 'https://docs.docker.com/engine/',
+    instructions: 'Start Docker Desktop or Docker Engine, select a Linux Docker context, then refresh the catalog.'
+  },
   git: {
     label: 'Git', url: 'https://git-scm.com/install/',
     instructions: 'Install Git and restart VS Code if the installer changes PATH.',
@@ -46,6 +65,35 @@ const toolchains = {
     label: 'Go', url: 'https://go.dev/doc/install',
     instructions: 'Install the latest stable Go release for your operating system.',
     windows: 'winget install --exact --id GoLang.Go', macos: 'brew install go'
+  },
+  'wails-go': {
+    label: 'Go for Wails', url: 'https://go.dev/doc/install',
+    instructions: 'Install a current Go release. These Wails starters require Go 1.26.10 or newer.',
+    windows: 'winget install --exact --id GoLang.Go', macos: 'brew install go'
+  },
+  ...Object.fromEntries(wailsVersions.map(({ id, label, cli, git, version }) => {
+    const install = 'go install ' + git + '@v' + version;
+    return [id, {
+      label: label + ' CLI', url: id === 'wails3' ? 'https://v3.wails.io/getting-started/installation/' : 'https://wails.io/docs/gettingstarted/installation/',
+      instructions: 'In a terminal, run `' + install + '`. Add the Go binary directory for `' + cli + '` to PATH for use in the generated project.',
+      windows: install, macos: install, linux: install
+    }];
+  })),
+  'wails-webview': {
+    label: 'Microsoft Edge WebView2 Runtime', url: 'https://developer.microsoft.com/microsoft-edge/webview2/',
+    instructions: 'Install the Evergreen WebView2 Runtime for Windows.'
+  },
+  'wails-macos': {
+    label: 'Xcode Command Line Tools', url: 'https://v3.wails.io/getting-started/installation/',
+    instructions: 'Install Xcode Command Line Tools with xcode-select --install.'
+  },
+  'wails2-linux': {
+    label: 'GTK 3 and WebKitGTK 4.1', url: 'https://wails.io/docs/gettingstarted/installation/',
+    instructions: 'Install a C compiler, pkg-config, GTK 3 and WebKitGTK 4.1 development packages. Build with -tags webkit2_41.'
+  },
+  'wails3-linux': {
+    label: 'GTK 4 and WebKitGTK 6.0', url: 'https://v3.wails.io/getting-started/installation/',
+    instructions: 'Install a C compiler, pkg-config, GTK 4 and WebKitGTK 6.0 development packages.'
   },
   swift: {
     label: 'Swift', url: {
@@ -459,6 +507,44 @@ async function detectExecutable(names, args, pattern, dirs, settings, skip = () 
     const version = output.match(pattern)?.[1];
     if (version) return { version, file };
   }
+}
+
+async function findDockerTools(settings, probe) {
+  const { platform, env } = settings;
+  const docker = await probe(['docker'], ['--version'], /Docker version (\d+\.\d+\.\d+)/i, [
+    platform === 'win32' && env.ProgramFiles && path.join(env.ProgramFiles, 'Docker', 'Docker', 'resources', 'bin'),
+    platform === 'darwin' && '/Applications/Docker.app/Contents/Resources/bin'
+  ]);
+  if (!docker) return {};
+  const [compose, server] = await Promise.all([
+    commandOutput(docker.file, ['compose', 'version', '--short'], settings).catch(() => ''),
+    commandOutput(docker.file, ['version', '--format', '{{.Server.Os}} {{.Server.Version}}'], settings).catch(() => '')
+  ]);
+  const composeVersion = compose.match(/^v?(\d+\.\d+\.\d+)/)?.[1];
+  const engineVersion = server.match(/^linux\s+(\d+\.\d+\.\d+)/)?.[1];
+  return {
+    docker,
+    'docker-compose': requireVersion(composeVersion && { ...docker, version: composeVersion }, 2, 20),
+    'docker-linux': engineVersion ? { ...docker, version: engineVersion } : undefined
+  };
+}
+
+async function findWailsTools(go, settings, directories) {
+  if (!go) return {};
+  const binDir = await commandOutput(go.file, ['env', 'GOBIN'], settings).catch(() => '');
+  const goPath = binDir ? '' : await commandOutput(go.file, ['env', 'GOPATH'], settings).catch(() => '');
+  const dirs = directories(binDir || path.join(goPath.split(path.delimiter)[0] || path.join(settings.home, 'go'), 'bin'));
+  const tools = await Promise.all(wailsVersions.map(async version => {
+    const module = version.git.split('/cmd/')[0];
+    for (const file of await candidates([version.cli], dirs, settings.platform)) {
+      const output = await commandOutput(go.file, ['version', '-m', file], settings).catch(() => '');
+      const installed = output.split(/\r?\n/).map(line => line.trim().split(/\s+/))
+        .find(([key, name]) => key === 'mod' && name === module)?.[2]?.match(/^v(\d+\.\d+\.\d+)$/)?.[1];
+      if (installed && atLeast(installed, ...version.version.split('.').map(Number))) return [version.id, { version: installed, file }];
+    }
+    return [version.id, undefined];
+  }));
+  return Object.fromEntries(tools);
 }
 
 function atLeast(version, ...minimum) {
@@ -918,24 +1004,37 @@ async function detectToolchains(settings = system) {
     const required = await Promise.all([compilerName, 'ninja', 'cmake'].map(name => candidates([name], [tools], platform)));
     return required.every(files => files.length) ? kit : undefined;
   };
-  const [[wx, gtk, x11, wayland, gl], [xrandr, xcursor, udev, freetype, xi, harfbuzz], gtk4, gtkmm, webkit, ssl, webView, editors, supplemental, boards] = await Promise.all([
+  const [[wx, gtk, x11, wayland, gl], [xrandr, xcursor, udev, freetype, xi, harfbuzz], gtk4, gtkmm, webkit, webkit6,
+    ssl, webView, editors, supplemental, boards, wails, docker, terraform] = await Promise.all([
     linuxGraphics,
     platform === 'linux' ? Promise.all(['xrandr', 'xcursor', 'libudev', 'freetype2', 'xi', 'harfbuzz'].map(pkgConfig)) : [],
     gtkKit('gtk4', 'gcc'), gtkKit('gtkmm-4.0', 'g++'),
     platform === 'linux' ? pkgConfig('webkit2gtk-4.1') : undefined,
+    platform === 'linux' && go ? pkgConfig('webkitgtk-6.0') : undefined,
     platform === 'linux' ? pkgConfig('openssl') : undefined,
-    windows && studio ? findWebView(settings) : undefined,
+    windows && (studio || go) ? findWebView(settings) : undefined,
     findGameEditors(settings, probe),
     findSupplementalTools(settings, probe, directories, appleSdk),
-    findBoardTools(settings, probe, directories, compiler)
+    findBoardTools(settings, probe, directories, compiler),
+    findWailsTools(go, settings, directories),
+    findDockerTools(settings, probe),
+    probe(['terraform'], ['version'], /^Terraform v(\d+\.\d+\.\d+)/m)
   ]);
   const sfml = x11 && gl && xrandr && xcursor && udev && freetype ? { version: 'X11 / OpenGL', file: x11.file } : undefined;
   const results = {
+    ...docker,
+    terraform: requireVersion(terraform, 1, 9),
     git,
     python, uv, conda, virtualenv: virtualenv || virtualenvRuntime && { version: 'Python module', file: virtualenvRuntime.file },
     tkinter: tk && { version: 'with Python ' + tk.version, file: tk.file },
     rust: rustc && cargo && { ...rustc, version: rustc.version + ' / Cargo ' + cargo.version },
     go: requireVersion(go, 1, 20),
+    'wails-go': requireVersion(go, 1, 26, 10),
+    ...wails,
+    'wails-webview': webView,
+    'wails-macos': appleSdk,
+    'wails2-linux': compiler && gtk ? webkit : undefined,
+    'wails3-linux': compiler && gtk4 ? webkit6 : undefined,
     swift: requireVersion(swift, 5, 9),
     'apple-sdk': appleSdk,
     java: javac && javaRuntime ? javac : undefined,
@@ -962,7 +1061,7 @@ async function detectToolchains(settings = system) {
     'next-node': requireVersion(node, 20, 9),
     'nuxt-node': node && { ...node, usable: supportsNuxt(node.version) },
     'electron-node': requireVersion(node, 22, 13),
-    'tauri-windows': webView,
+    'tauri-windows': studio ? webView : undefined,
     'tauri-linux': ssl ? webkit : undefined,
     'flutter-windows': studio ? { version: 'MSVC', file: studio.file } : undefined,
     'flutter-linux': cmake && gtk && flutterLinuxTools?.[0] && flutterLinuxTools[1] ? gtk : undefined,

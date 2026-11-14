@@ -14,7 +14,6 @@ function starter(id, group, language, label, description, tools, files, commands
     pythonTestPackages: options.pythonTestPackages,
     webTarget: options.webTarget,
     androidCmake: options.androidCmake,
-    sdlVersion: options.sdlVersion,
     next: 'Follow the run commands in README.md.'
   };
 }
@@ -45,33 +44,19 @@ function gtkStarter(cpp) {
 function sdlPair(id, label, description, options = {}) {
   return ['C', 'C++'].map(language => {
     const cpp = language === 'C++';
-    return starter(id + (cpp ? '-cpp' : '-c'), 'graphics', language, label + ' for ' + language, description,
+    const suffix = cpp ? '-cpp' : '-c';
+    const template = starter(id + suffix, 'graphics', language, label + ' for ' + language, description,
       ['cmake', cpp ? 'cpp-compiler' : 'c-compiler', ...(options.tools || [])],
       ['CMakeLists.txt', 'src/main.c', 'gitignore'], cmakeBuild, {
         cmakeTarget: 'app',
-        sourceDirectory: options.sourceDirectory || (cpp ? id + '-c' : undefined),
+        sourceDirectory: options.sourceDirectory,
         platformTools: { linux: ['sdl-desktop', ...(options.linuxTools || [])] },
-        sdlVersion: options.sdlVersion,
         requirement: options.requirement,
         note: options.note ? sdlRun + ' ' + options.note : sdlRun
       });
+    return { ...template, sdl: true };
   });
 }
-
-const sdlGraphics = ['2.32.10', '3.4.16'].flatMap(sdlVersion => {
-  const sdl = 'SDL' + sdlVersion[0];
-  const id = sdl.toLowerCase();
-  return [
-    ...sdlPair(id + '-opengl', sdl + ' + OpenGL', 'An OpenGL 3.3 core context and a render loop.', {
-      sourceDirectory: 'sdl-opengl', sdlVersion, linuxTools: ['opengl-dev']
-    }),
-    ...sdlPair(id + '-vulkan', sdl + ' + Vulkan', 'A Vulkan swapchain with a resize-aware color-clear render loop.', {
-      sourceDirectory: 'sdl-vulkan', sdlVersion, tools: ['vulkan-dev'],
-      requirement: 'CMake, a native compiler, and Vulkan development files 1.3.216 or newer. Run with a Vulkan 1.1 driver or MoltenVK.',
-      note: 'On Windows, install the Vulkan SDK and restart your shell so VULKAN_SDK is set. On Linux, install your distribution’s Vulkan loader development package and a Vulkan driver. On macOS, install the Vulkan SDK with MoltenVK and load its setup-env.sh before building and running.'
-    })
-  ];
-});
 
 function raylibVr(language) {
   return starter(language === 'C' ? 'raylib-vr-android-c' : 'raylib-vr-android-cpp', 'vr', language,
@@ -87,6 +72,21 @@ function raylibVr(language) {
 }
 
 const standardTemplates = [
+  starter('terraform-infrastructure', 'infrastructure', 'Terraform', 'Terraform Infrastructure',
+    'An environment-based Terraform layout with separate bootstrap roots and reusable networking and ingestion modules.',
+    ['terraform'], [
+      'README.md', 'gitignore',
+      'infra/bootstrap-dev/main.tf', 'infra/bootstrap-dev/backend.tf.example', 'infra/bootstrap-dev/backend.hcl.example',
+      'infra/bootstrap-dev-scan-access/main.tf', 'infra/bootstrap-dev-scan-access/backend.tf.example',
+      'infra/bootstrap-dev-scan-access/backend.hcl.example',
+      'infra/envs/dev/main.tf', 'infra/envs/dev/naming.tf', 'infra/envs/dev/variables.tf', 'infra/envs/dev/outputs.tf',
+      'infra/envs/dev/backend.tf.example', 'infra/envs/dev/backend.hcl.example', 'infra/envs/dev/terraform.tfvars.example',
+      'infra/envs/dev/tests/layout.tftest.hcl',
+      'infra/modules/private_network/main.tf', 'infra/modules/private_network/variables.tf',
+      'infra/modules/private_network/outputs.tf', 'infra/modules/private_network/versions.tf',
+      'infra/modules/ingestion/main.tf', 'infra/modules/ingestion/variables.tf',
+      'infra/modules/ingestion/outputs.tf', 'infra/modules/ingestion/versions.tf'
+    ], undefined, { requirement: 'Terraform 1.9 or newer. The sample validates and plans locally.' }),
   starter('blender-extension', 'blender', 'Python', 'Blender Add-on Extension',
     'A Blender extension that adds an animated turntable operator to the 3D View Add menu.',
     ['blender'], ['blender_manifest.toml', '__init__.py', 'gitignore'],
@@ -133,6 +133,29 @@ const standardTemplates = [
     'Send a prompt to a locally running Ollama model using Python’s HTTP client.',
     ['ml-python', 'ollama'], ['chat.py', 'gitignore'], ['python3 chat.py --model MODEL_NAME "Explain what an embedding is."'],
     { pythonMinimum: '3.11', note: 'Start Ollama. Use ollama list to find an installed model, or use ollama pull MODEL_NAME to download one. Replace MODEL_NAME with that model’s name. The script calls the loopback API at port 11434.' }),
+  starter('ml-pytorch-digits', 'ai', 'Python', 'PyTorch Digit Classifier',
+    'Train a small CPU neural network on handwritten digits, save its weights, and run a prediction.',
+    ['ml-python'], ['model.py', 'train.py', 'predict.py', 'gitignore'],
+    ['python3 train.py', 'python3 predict.py --index 1'],
+    { pythonMinimum: '3.11', pythonPackages: ['torch>=2.9,<3', 'scikit-learn>=1.7,<2'],
+      note: 'The digits ship with scikit-learn. Training reports accuracy on a stratified holdout and saves weights to artifacts/digits.pt. The prediction command reloads the weights and classifies a held-out digit.' }),
+  starter('ml-onnx', 'ai', 'Python', 'ONNX Model Export and Inference',
+    'Train a classifier, export it to ONNX, and verify that ONNX Runtime reproduces its predictions.',
+    ['ml-python'], ['export_model.py', 'predict.py', 'gitignore'],
+    ['python3 export_model.py', 'python3 predict.py 5.1 3.5 1.4 0.2'],
+    { pythonMinimum: '3.11', pythonPackages: ['scikit-learn>=1.7,<2', 'skl2onnx>=1.19,<2', 'onnxruntime>=1.24,<2'],
+      note: 'Export fits on the Iris training split and checks prediction parity on the holdout. The model is saved to artifacts/iris.onnx. The prediction command uses ONNX Runtime on the CPU and accepts four measurements in centimeters.' }),
+  starter('ml-forecasting', 'ai', 'Python', 'Time-Series Forecasting',
+    'Forecast daily demand with lagged features and compare predictions against a weekly baseline.',
+    ['ml-python'], ['forecast.py', 'gitignore'], ['python3 forecast.py'],
+    { pythonMinimum: '3.11', pythonPackages: ['scikit-learn>=1.7,<2'],
+      note: 'The starter generates synthetic demand with weekly seasonality. Evaluation uses a chronological holdout with one-day-ahead predictions. Each test prediction uses only observations available before that day.' }),
+  starter('ai-ollama-rag', 'ai', 'Python', 'Ollama Document Q&A',
+    'Retrieve relevant passages from local Markdown files and ask a local model to answer with citations.',
+    ['ml-python', 'ollama'], ['ask.py', 'docs/support.md', 'docs/shipping.md', 'gitignore'],
+    ['ollama pull embeddinggemma', 'ollama pull llama3.2:1b', 'python3 ask.py "How long do I have to request a refund?"'],
+    { pythonMinimum: '3.11',
+      note: 'Start Ollama before pulling the models. The CLI uses the local API at 127.0.0.1:11434. Add your own short Markdown paragraphs under docs/ and use --help to change models or the number of retrieved passages.' }),
   starter('python-fastapi', 'server', 'Python', 'FastAPI JSON API',
     'A typed JSON API with health and addition endpoints and interactive API documentation.',
     ['ml-python'], ['api.py', 'gitignore'], ['python3 -m uvicorn api:app --reload'],
@@ -219,9 +242,15 @@ const standardTemplates = [
     [], { requirement: 'Godot 4.3 or newer.',
       note: 'Import `project.godot` in the Godot Project Manager and press F6 with the main scene open, or F5 to run the project. ' +
         'Use the arrow keys to move. Add new levels under `game/levels` and keep each feature’s scenes and scripts together.' }),
-  ...sdlPair('sdl2', 'SDL2', 'A resizable SDL2 window with a 2D rendering and input loop.'),
-  ...sdlPair('sdl3', 'SDL3', 'A resizable SDL3 window with a 2D rendering and input loop.'),
-  ...sdlGraphics,
+  ...sdlPair('sdl', 'SDL', 'A resizable SDL window with a 2D rendering and input loop.'),
+  ...sdlPair('sdl-opengl', 'SDL + OpenGL', 'An OpenGL 3.3 core context and a render loop.', {
+    sourceDirectory: 'sdl-opengl', linuxTools: ['opengl-dev']
+  }),
+  ...sdlPair('sdl-vulkan', 'SDL + Vulkan', 'A Vulkan swapchain with a resize-aware color-clear render loop.', {
+    sourceDirectory: 'sdl-vulkan', tools: ['vulkan-dev'],
+    requirement: 'CMake, a native compiler, and Vulkan development files 1.3.216 or newer. Run with a Vulkan 1.1 driver or MoltenVK.',
+    note: 'On Windows, install the Vulkan SDK and restart your shell so VULKAN_SDK is set. On Linux, install your distribution’s Vulkan loader development package and a Vulkan driver. On macOS, install the Vulkan SDK with MoltenVK and load its setup-env.sh before building and running.'
+  }),
   ...['C', 'C++'].map(raylibVr),
   starter('kotlin-android-xr', 'vr', 'Kotlin', 'Kotlin Android XR', 'A Jetpack Compose for XR spatial panel with Home Space and Full Space controls.',
     ['android-xr-gradle', 'android-sdk'], ['settings.gradle.kts', 'build.gradle.kts', 'gradle.properties',

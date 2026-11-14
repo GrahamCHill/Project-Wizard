@@ -46,15 +46,17 @@ LaTeX templates are off by default. Select **Enable LaTeX templates** and save t
 | --- | --- |
 | Command line | C and C++ with CMake, CUDA kernel and library, Dart, Python, Ruby, PHP, Lua, Rust, Go, Swift, Java, Kotlin/JVM, Zig, and .NET |
 | Systems | x86 and x86-64 NASM, ARM64 assembly for Windows, Linux, and Apple silicon, Raspberry Pi OS and Pico firmware, Arduino AVR, ESP32, STM32 and Nordic with Zephyr, and Linux kernel modules |
-| Desktop | Qt, wxWidgets, GTK, GTKmm, and C++ + Lua with CMake, plus Flutter, Tauri, Electron, Python Tkinter, Java and Kotlin Swing, macOS SwiftUI and AppKit, and Windows Forms |
+| Desktop | Qt, wxWidgets, GTK, GTKmm, and C++ + Lua with CMake, plus Flutter, Tauri, Electron, Wails, Python Tkinter, Java and Kotlin Swing, macOS SwiftUI and AppKit, and Windows Forms |
 | Mobile | React Native with Expo or the Community CLI, Android Jetpack Compose, iOS SwiftUI, and Flutter for Android and iOS |
-| Graphics | SFML and SFML + Dear ImGui in C++, SDL2 and SDL3 in C and C++, mixed C# + C++ + Lua SDL3 with Vulkan, OpenGL, or DirectX 11, and LÖVE for Lua |
+| Graphics | SFML and SFML + Dear ImGui in C++, SDL 2 or 3 with optional OpenGL or Vulkan in C and C++, mixed C# + C++ + Lua SDL3 with Vulkan, OpenGL, or DirectX 11, and LÖVE for Lua |
 | Web frontend | Flutter Web, Next.js, Nuxt, static HTML/CSS/JavaScript, and TypeScript with Vite |
 | Web server | Dart JSON API, FastAPI, Django, and Flask for Python, Ruby with Sinatra, PHP and Laravel + Vue, Rust with Axum, Go, Java, Kotlin/JVM, Node.js, and ASP.NET Core |
 | Games | MonoGame, Raylib for C, C++, or C#, and a mixed C++ and C# Raylib app |
 | Game Engines | Unity 6 (C#), Unreal Engine 5 (C++), Godot 4 (GDScript), and Godot 4 GDExtension (C++ or Rust) |
 | Blender | An installable add-on extension and a headless scene automation script |
-| ML & AI | scikit-learn classification, a NumPy neural network, and a local Ollama chat client |
+| ML & AI | scikit-learn classification, a NumPy neural network, PyTorch digit classification, ONNX export and inference, time-series forecasting, and local Ollama chat and document Q&A |
+| Docker | Python, Spring Boot, Go, and Rust backends, a Node.js frontend, Qdrant, local RAG, and a cloud-ready ONNX inference API |
+| Infrastructure | Terraform with a development root, separate bootstrap roots, and reusable modules |
 | Documents (opt-in) | A LaTeX article with a BibTeX bibliography |
 | Shared library | Kotlin Multiplatform with JVM and Node.js targets and shared Kotlin tests |
 | VR (opt-in) | Kotlin with Jetpack Compose for XR, plus native Android Raylib for C and C++ |
@@ -82,6 +84,8 @@ The CMake desktop starters, including SDL2, SDL3, and their OpenGL and Vulkan va
 
 Next.js, Nuxt, and Tauri use their official generators with npm. The wizard downloads the starter during creation. Run `npm install` in the generated project and follow its README for development and build commands. Tauri uses a TypeScript frontend and a Rust backend. Electron comes with separate main, preload, and renderer files and uses Electron Forge to package the app. [Next.js CLI](https://nextjs.org/docs/app/api-reference/cli/create-next-app) · [Nuxt starters](https://github.com/nuxt/starter) · [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) · [Electron Forge packaging](https://www.electronforge.io/cli#package)
 
+Under **Desktop**, **Wails Desktop** offers **Wails 3** and **Wails 2** in Project setup, with Wails 3 preferred when both are ready. The wizard detects the matching CLI and uses its official generator to create a Go backend and Vite frontend. The generated README covers development and packaging on Windows, macOS, and Linux. A selected PNG or WebP becomes the source image for the Wails packaging tools. [Wails 3 installation](https://v3.wails.io/getting-started/installation/) · [Wails 2 installation](https://wails.io/docs/gettingstarted/installation/)
+
 The GTK and GTKmm starters use CMake and pkg-config. On Windows, install the GTK development packages and CMake toolchain in MSYS2 UCRT64 and launch VS Code from that shell. On Linux or macOS, install GTK 4 or GTKmm 4 from your package manager. [GTK installation](https://www.gtk.org/docs/installations/) · [GTKmm](https://www.gtk.org/docs/language-bindings/cpp/)
 
 The wxWidgets starter builds the `app` target with an installed SDK or the official wxWidgets 3.2.10 source archive. Use `-DPROJECT_USE_SYSTEM_WXWIDGETS=OFF` to select the source build. The generated README includes the Linux prerequisites and Windows Visual Studio instructions. [wxWidgets 3.2.10](https://github.com/wxWidgets/wxWidgets/releases/tag/v3.2.10)
@@ -96,11 +100,28 @@ The standalone Dart starters support the Dart SDK or the Dart SDK bundled with F
 
 Under **Game Engines**, Unity includes a demo scene with a rotating cube and dedicated scripts, scenes, art, audio, and prefab folders. Unreal includes a C++ game module, game and editor targets, organized content folders, and a spinning actor to place in a level. Godot includes a runnable 2D scene with arrow-key movement and a reusable player scene. Clear **Ready to use** to create a starter before installing its editor. For custom editor locations, set `UNITY_EDITOR_PATH`, `UNREAL_ENGINE_ROOT`, or `GODOT_PATH` as shown in the wizard’s setup guides. [Unity Editor installation](https://docs.unity.com/en-us/hub/add-editor) · [Unreal directory structure](https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-directory-structure) · [Godot project organization](https://docs.godotengine.org/en/stable/tutorials/best_practices/project_organization.html)
 
-In **Graphics**, choose your SDL version, graphics API, and language from the template names. The Vulkan starters clear and present a Vulkan swapchain and rebuild it on resize. Use a Vulkan 1.1 runtime and development files 1.3.216 or newer. On macOS, use the Vulkan SDK with MoltenVK. If a template needs setup, clear **Ready to use** to see the guide. [Vulkan SDK downloads](https://vulkan.lunarg.com/sdk/home)
+In **Graphics**, choose **SDL**, **SDL + OpenGL**, or **SDL + Vulkan** for C or C++, then select **SDL 3.4.16** or **SDL 2.32.10** under **SDL version** in Project setup. The choice selects the SDL library and generates source for that API. The Vulkan starters clear and present a Vulkan swapchain and rebuild it on resize. Use a Vulkan 1.1 runtime and development files 1.3.216 or newer. On macOS, use the Vulkan SDK with MoltenVK. If a template needs setup, clear **Ready to use** to see the guide. [SDL releases](https://github.com/libsdl-org/SDL/releases) · [Vulkan SDK downloads](https://vulkan.lunarg.com/sdk/home)
 
 The mixed SDL3 starters put the app loop and state in C#, SDL rendering in C++, and reloadable behavior in Lua. Choose Vulkan, OpenGL, or Windows-only DirectX 11 in **Graphics**. `dotnet run` builds the native bridge and launches the example. Press **R** to reload the Lua script while the window is open. The generated README covers self-contained publishing and macOS app bundles. [SDL renderer selection](https://wiki.libsdl.org/SDL3/SDL_CreateRenderer)
 
 The **SFML** and **SFML + Dear ImGui** starters offer **SFML 3.1.0** and **SFML 2.6.2** in Project setup. The choice sets the C++ API, pinned libraries, and Linux prerequisites. The first starter has a circle you can move with the arrow keys. The second adds an ImGui panel that changes the circle’s size and color and uses the backend compatible with the selected SFML version. Both support app icons and the `distribution` target. [SFML CMake setup](https://www.sfml-dev.org/tutorials/3.1/getting-started/cmake/) · [ImGui-SFML releases](https://github.com/SFML/imgui-sfml/releases)
+
+Under **ML & AI**, the PyTorch and ONNX starters train on bundled datasets and save model artifacts. The forecasting starter measures accuracy on a chronological holdout and compares it with a weekly baseline. Ollama Document Q&A retrieves passages from local Markdown files and prints cited sources. Its README includes commands to download the required Ollama models. All four starters use the wizard’s project-local Python environment. [PyTorch quickstart](https://docs.pytorch.org/tutorials/beginner/basics/quickstart_tutorial.html) · [ONNX Runtime Python](https://onnxruntime.ai/docs/get-started/with-python.html) · [Ollama embeddings](https://docs.ollama.com/capabilities/embeddings)
+
+### Docker projects
+
+The **Docker** category detects Docker, the Compose plugin, and a running Linux container engine. Clear **Ready to use** to see setup guides if Docker is unavailable. The wizard writes the project files. Run the generated README commands to start the containers. Each starter uses Docker images for its build tools and publishes local ports on loopback. [Docker Compose quickstart](https://docs.docker.com/compose/gettingstarted/)
+
+- **Python Backend** offers FastAPI, Flask, or Django. Dependencies install into a virtual environment inside the image.
+- **Spring Boot Backend** offers Java or Kotlin. Both build a runnable JAR with Maven in Docker.
+- **Go Backend** uses the standard HTTP library. **Rust Backend** uses Axum and Tokio.
+- **Node.js Frontend** offers React, Vue, or vanilla JavaScript. Vite builds the app and Nginx serves the result.
+- **Qdrant Vector Database** includes a persistent volume and an example similarity search. **Local RAG (Ollama)** lets you choose **Qdrant** or **PostgreSQL (pgvector)** under **Vector database**. Both variants retrieve passages from local Markdown files and return the source excerpts with the answer. [Qdrant quickstart](https://qdrant.tech/documentation/quickstart/) · [pgvector](https://github.com/pgvector/pgvector)
+- **Cloud ONNX Inference API** includes an Iris model. It can load your trained ONNX model from a mounted file or a checksum-verified HTTPS URL. The generated README covers local prediction and deployment to a container host. [ONNX Runtime](https://onnxruntime.ai/docs/api/python/api_summary.html)
+
+### Terraform infrastructure
+
+Choose **Infrastructure → Terraform Infrastructure** for a starter with `infra/envs/dev`, separate state and scan-access bootstrap roots, and reusable private network and ingestion modules. Its example can plan and test locally. The generated README explains how to add environments and configure an Azure Storage backend. [Terraform module structure](https://developer.hashicorp.com/terraform/language/modules/develop/structure)
 
 The **C++ Plugin Host**, **C++ Plugin Host + Lua**, and **C# Plugin Host + Lua** starters scan a `plugins/` folder next to the executable at launch. The pure C++ starter builds with a C++ compiler and CMake and includes a native sample plugin with a versioned C ABI. The Lua variants also include a sample script. The C# host uses a shared `IPlugin` contract and a separate assembly load context per plugin.
 

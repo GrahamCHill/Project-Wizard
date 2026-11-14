@@ -194,9 +194,15 @@ function detectFrameworks(filename, contents) {
     const cmake = contents.replace(/#\[\[.*?\]\]|#[^\r\n]*/gs, '');
     const frameworks = [];
     if (/\b(?:find_package|FetchContent_Declare)\s*\(\s*["']?raylib\b|\btarget_link_libraries\s*\([^)]*\braylib\b/i.test(cmake)) frameworks.push('Raylib');
+    const sdl = [...cmake.matchAll(/(?:\b(?:find_package|FetchContent_Declare)\s*\(\s*["']?SDL([23])\b|\bSDL([23])::)/gi)];
+    frameworks.push(...[...new Set(sdl.map(match => 'SDL ' + (match[1] || match[2])))]);
     if (/\bpkg_check_modules\s*\([^)]*\bgtk4\b/i.test(cmake)) frameworks.push('GTK 4');
     if (/\bpkg_check_modules\s*\([^)]*\bgtkmm-4\.0\b/i.test(cmake)) frameworks.push('GTKmm 4');
     return frameworks;
+  }
+  if (file === 'go.mod') {
+    const wails = contents.matchAll(/^[ \t]*(?:require[ \t]+)?github\.com\/wailsapp\/wails\/v([23])[ \t]+v\1\./gm);
+    return [...new Set([...wails].map(match => 'Wails ' + match[1]))];
   }
   if (file === 'package.json') {
     const manifest = parseProjectJson(contents);

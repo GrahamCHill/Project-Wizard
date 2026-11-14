@@ -7,6 +7,9 @@ const { externalGenerators } = require('./external-generators');
 const { sdlMixedStarters, pluginStarters } = require('./mixed-starters');
 const { systemsStarters } = require('./systems-starters');
 const { renderSfml } = require('./sfml');
+const { renderSdl, sdlVersion } = require('./sdl');
+const { wailsStarter } = require('./wails');
+const { dockerStarters, resolveDockerStarter } = require('./docker-starters');
 
 const sfmlStarter = {
   group: 'graphics', kind: 'starter', language: 'C++', cmakeTarget: 'app',
@@ -79,9 +82,11 @@ const starters = [
   },
   ...pluginStarters,
   ...systemsStarters,
+  ...dockerStarters,
   ...standardTemplates,
   ...generators,
   ...externalGenerators,
+  wailsStarter,
   {
     id: 'empty', group: 'general', kind: 'empty', label: 'Empty Project',
     description: 'An empty folder for a new project.', requirement: 'No SDK or build tools required.'
@@ -89,8 +94,11 @@ const starters = [
 ];
 
 async function writeStarter(template, name, project, parent, log, tools = {}, options = {}) {
+  if (template.docker) template = resolveDockerStarter(template, options.build);
   const sdk = template.needsSdk ? await getSdk(parent, log) : undefined;
-  const templateRoot = path.join(__dirname, '..', 'templates', template.sourceDirectory || template.id);
+  const sdl = template.sdl && sdlVersion(options.build);
+  const sourceDirectory = template.sourceDirectory || (sdl ? sdl.id + '-c' : template.id);
+  const templateRoot = path.join(__dirname, '..', 'templates', sourceDirectory);
   const cpp = template.language === 'C++';
   const moduleName = 'Game' + name.replace(/[^A-Za-z0-9]/g, '').slice(0, 48);
   const renderTokens = text => replaceTokens(template.sfml ? renderSfml(text, options.build) : text, name, sdk?.major)
@@ -103,16 +111,13 @@ async function writeStarter(template, name, project, parent, log, tools = {}, op
     .replaceAll('__SDL_BACKEND_NOTE__', template.sdlBackendNote || '');
   for (const file of template.files) {
     const contents = await readStarterText(path.join(templateRoot, file));
-    const output = file === 'gitignore' ? '.gitignore' : cpp && template.sourceDirectory && file === 'src/main.c' ? 'src/main.cpp' : file;
+    const output = file === 'gitignore' ? '.gitignore' : cpp && file === 'src/main.c' ? 'src/main.cpp' : file;
     const target = path.join(project, renderTokens(output));
     await fs.mkdir(path.dirname(target), { recursive: true });
     const rendered = file === 'CMakeLists.txt' ? contents.replaceAll('__CMAKE_LANGUAGE__', cpp ? 'CXX' : 'C')
       .replaceAll('__NATIVE_EXTENSION__', cpp ? 'cpp' : 'c').replaceAll('__NATIVE_STANDARD__', cpp ? 'cxx_std_17' : 'c_std_99') : contents;
-    let source = rendered.replaceAll('__NATIVE_LABEL__', cpp ? 'C++' : 'C');
-    if (template.sdlVersion) {
-      source = source.replaceAll('__SDL_VERSION__', template.sdlVersion).replaceAll('__SDL_MAJOR__', template.sdlVersion[0]);
-    }
-    await fs.writeFile(target, renderTokens(source), { flag: 'wx' });
+    const source = rendered.replaceAll('__NATIVE_LABEL__', cpp ? 'C++' : 'C');
+    await fs.writeFile(target, renderTokens(sdl ? renderSdl(source, sdl) : source), { flag: 'wx' });
   }
   for (const [file, output] of Object.entries(template.sharedFiles || {})) {
     const source = await readStarterText(path.join(__dirname, '..', 'templates', '_shared', file));
@@ -136,8 +141,9 @@ ${template.androidCmake ? `if(ANDROID)\n    ${link}\nendif()` : link}
 `);
   }
   if (template.commands) {
+    const note = sdl ? 'This project uses SDL ' + sdl.version + '. ' + template.note : template.note;
     await fs.writeFile(path.join(project, 'README.md'),
-      starterReadme(name, template.description, template.commands, template.note), { flag: 'wx' });
+      starterReadme(name, template.description, template.commands, note), { flag: 'wx' });
   }
 }
 

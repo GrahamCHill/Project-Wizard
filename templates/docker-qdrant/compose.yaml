@@ -1,0 +1,18 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    ports:
+      - "127.0.0.1:${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - vectors:/qdrant/storage
+  demo:
+    image: python:3.13-slim-bookworm
+    profiles: ["demo"]
+    depends_on: [qdrant]
+    environment:
+      QDRANT_URL: http://qdrant:6333
+    volumes:
+      - ./demo.py:/demo.py:ro
+    command: ["python", "/demo.py"]
+volumes:
+  vectors:

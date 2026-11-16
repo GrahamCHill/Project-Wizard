@@ -17,10 +17,10 @@ test('the CLion registry adds individual starters and defers equivalent entries 
   assert.equal(generatorSources().extensions.split('\n').length, registry.length);
 });
 
-function requestBridge(request) {
+function requestBridge(request, env) {
   const bridge = path.join(__dirname, '..', 'clion', 'bridge.js');
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [bridge], { windowsHide: true });
+    const child = spawn(process.execPath, [bridge], { env, windowsHide: true });
     const chunks = [];
     const errors = [];
     child.stdout.on('data', chunk => chunks.push(chunk));
@@ -39,6 +39,33 @@ function requestBridge(request) {
   });
 }
 
+test('CLion loads CMake template options without launching toolchain probes', async t => {
+  const parent = await fs.realpath(os.tmpdir());
+  const tools = await fs.mkdtemp(path.join(parent, 'project-wizard-probes-'));
+  t.after(async () => {
+    assert.equal(path.dirname(tools), parent);
+    await fs.rm(tools, { recursive: true, force: true });
+  });
+  const marker = path.join(tools, 'probe.log');
+  for (const name of ['cmake', 'docker', 'node']) {
+    const windows = process.platform === 'win32';
+    await fs.writeFile(path.join(tools, name + (windows ? '.cmd' : '')), windows ?
+      '@echo probed>> "%PROJECT_WIZARD_PROBE_LOG%"\r\n' :
+      '#!/bin/sh\necho probed >> "$PROJECT_WIZARD_PROBE_LOG"\n', { mode: 0o755 });
+  }
+  const env = { ...process.env, PATH: tools, PROJECT_WIZARD_PROBE_LOG: marker };
+  for (const templateId of ['raylib-cpp', 'sdl', 'docker-python']) {
+    const catalog = await requestBridge({ action: 'catalog', templateId }, env);
+    assert.equal(catalog.error, undefined);
+    assert.deepEqual(catalog.templates.map(template => template.id), [templateId]);
+    assert.equal(catalog.canRefresh, false);
+    if (templateId === 'raylib-cpp') {
+      assert.equal(catalog.templates[0].options.targetChoice.defaultId, 'native');
+    }
+  }
+  await assert.rejects(fs.access(marker), { code: 'ENOENT' });
+});
+
 test('the CLion bridge creates Raylib and SDL in IDE-created directories and preserves project files', async t => {
   const parent = await fs.realpath(os.tmpdir());
   const root = await fs.mkdtemp(path.join(parent, 'project-wizard-clion-'));
@@ -46,7 +73,6 @@ test('the CLion bridge creates Raylib and SDL in IDE-created directories and pre
     assert.equal(path.dirname(root), parent);
     await fs.rm(root, { recursive: true, force: true });
   });
-  const context = { tools: {}, pythonVersions: [], mono: [] };
   for (const [name, templateId, options, library] of [
     ['Raylib Example', 'raylib-cpp', { targets: ['native', 'emscripten'] }, /target_link_libraries\(game PRIVATE raylib\)/],
     ['SDL Example', 'sdl', { build: 'sdl2', language: 'c', renderer: 'default' }, /SDL2::SDL2-static/]
@@ -56,7 +82,7 @@ test('the CLion bridge creates Raylib and SDL in IDE-created directories and pre
     await fs.mkdir(idea, { recursive: true });
     const workspace = path.join(idea, 'workspace.xml');
     await fs.writeFile(workspace, '<project />');
-    const request = { action: 'create', templateId, context, destination, options, initializeGit: false };
+    const request = { action: 'create', templateId, destination, options, initializeGit: false };
     const result = await requestBridge(request);
     assert.equal(result.error, undefined);
     assert.equal(result.destination, destination);

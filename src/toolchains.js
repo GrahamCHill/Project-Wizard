@@ -465,6 +465,18 @@ function pathDirectories(env) {
   return (env.PATH || '').split(path.delimiter).map(part => part.replace(/^"(.*)"$/, '$1')).filter(part => path.isAbsolute(part));
 }
 
+function toolchainSearch(settings) {
+  const { env, home, platform } = settings;
+  const common = [...new Set([
+    ...pathDirectories(env), path.join(home, '.local', 'bin'),
+    ...(platform === 'darwin' ? ['/opt/homebrew/bin', '/usr/local/bin'] : [])
+  ])];
+  const directories = (...values) => [...new Set([...common, ...values.flat().filter(value => value && path.isAbsolute(value))])];
+  const probe = (names, args, pattern, extra = [], skip) =>
+    detectExecutable(names, args, pattern, directories(extra), settings, skip);
+  return { common, directories, probe };
+}
+
 async function subdirectories(root, suffix) {
   if (!root || !path.isAbsolute(root)) return [];
   const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
@@ -514,6 +526,46 @@ async function detectExecutable(names, args, pattern, dirs, settings, skip = () 
     const version = output.match(pattern)?.[1];
     if (version) return { version, file };
   }
+}
+
+function findGit(settings, probe, appleSdk) {
+  const { env, platform } = settings;
+  return probe(['git'], ['--version'], /\bgit version (\d+\.\d+\.\d+)/i, platform === 'win32' ? [
+    env.ProgramFiles && path.join(env.ProgramFiles, 'Git', 'cmd'),
+    env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs', 'Git', 'cmd')
+  ] : [], file => /\.(?:cmd|bat)$/i.test(file) || (platform === 'darwin' && !appleSdk && file === '/usr/bin/git'));
+}
+
+function findGo({ env, platform }, probe) {
+  return probe(['go'], ['version'], /\bgo(\d+\.\d+(?:\.\d+)?)/, [
+    env.GOROOT && path.join(env.GOROOT, 'bin'),
+    platform === 'win32' && env.ProgramFiles ? path.join(env.ProgramFiles, 'Go', 'bin') : '/usr/local/go/bin'
+  ]);
+}
+
+async function findNodeTools({ env, platform }, probe) {
+  const directory = platform === 'win32' && env.ProgramFiles ? path.join(env.ProgramFiles, 'nodejs') : undefined;
+  const [node, npm] = await Promise.all([
+    probe(['node'], ['--version'], /^v(\d+\.\d+\.\d+)/, directory),
+    probe(['npm'], ['--version'], /^(\d+\.\d+\.\d+)/, directory)
+  ]);
+  return {
+    node: requireVersion(node, 18), npm,
+    'vite-node': node && supportsVite(node.version) ? node : undefined,
+    'expo-node': requireVersion(node, 22, 13),
+    'react-native-node': node && supportsReactNative(node.version) ? node : undefined,
+    'next-node': requireVersion(node, 20, 9),
+    'nuxt-node': node && { ...node, usable: supportsNuxt(node.version) },
+    'electron-node': requireVersion(node, 22, 13)
+  };
+}
+
+function findPhp({ env }, probe) {
+  return probe(['php'], ['--version'], /\bPHP (\d+\.\d+\.\d+)/, env.PHP_HOME);
+}
+
+async function findComposer(probe) {
+  return requireVersion(await probe(['composer'], ['--version'], /Composer(?: version)?\s+(\d+\.\d+\.\d+)/i), 2);
 }
 
 async function findDockerTools(settings, probe) {
@@ -614,6 +666,34 @@ async function findPythonVersions(dirs, settings, uv) {
     if (match) return { ...requireVersion({ version: match[1], file }, 3, 8), tkinter: match[2] === '1', virtualenv: match[3] === '1' };
   }));
   return probed.filter(Boolean);
+}
+
+async function findPythonTools(settings, { probe, directories }, appleSdk) {
+  const { env, home, platform } = settings;
+  const windows = platform === 'win32';
+  const condaRoots = ['miniforge3', 'miniconda3', 'anaconda3'].flatMap(folder =>
+    [home, env.LOCALAPPDATA, env.ProgramData, '/opt'].filter(Boolean).map(root => path.join(root, folder)));
+  const [uv, conda, virtualenv, installations] = await Promise.all([
+    probe(['uv'], ['--version'], /\buv (\d+\.\d+\.\d+)/, [path.join(home, '.cargo', 'bin')]),
+    probe(['conda'], ['--version'], /\bconda (\d+\.\d+(?:\.\d+)?)/, [
+      env.CONDA_EXE && path.dirname(env.CONDA_EXE),
+      ...condaRoots.map(root => path.join(root, windows ? 'Scripts' : 'bin'))
+    ], file => /\.(?:cmd|bat)$/i.test(file)),
+    probe(['virtualenv'], ['--version'], /\bvirtualenv (\d+\.\d+\.\d+)/, [], file => /\.(?:cmd|bat)$/i.test(file)),
+    windows && env.LOCALAPPDATA ? subdirectories(path.join(env.LOCALAPPDATA, 'Programs', 'Python'), '') : []
+  ]);
+  const pythonVersions = await findPythonVersions(directories(installations,
+    env.VIRTUAL_ENV && path.join(env.VIRTUAL_ENV, windows ? 'Scripts' : 'bin'),
+    env.CONDA_PREFIX && path.join(env.CONDA_PREFIX, windows ? '' : 'bin')), { ...settings, appleSdk }, uv);
+  const python = pythonVersions.find(runtime => runtime.usable) || pythonVersions[0];
+  const tk = pythonVersions.find(runtime => runtime.usable && runtime.tkinter);
+  const virtualenvRuntime = pythonVersions.find(runtime => runtime.usable && runtime.virtualenv);
+  return { pythonVersions, results: {
+    python, uv, conda,
+    virtualenv: virtualenv || virtualenvRuntime && { version: 'Python module', file: virtualenvRuntime.file },
+    tkinter: tk && { version: 'with Python ' + tk.version, file: tk.file },
+    'ml-python': pythonVersions.find(runtime => runtime.usable && atLeast(runtime.version, 3, 11))
+  } };
 }
 
 async function findQt(settings, dirs) {
@@ -811,7 +891,7 @@ async function findVulkanSdk({ env, platform }) {
   return { version: version && patch ? `${version[1]}.${version[2]}.${patch}` : 'SDK', file: root };
 }
 
-async function findGameEditors(settings, probe) {
+async function findGameEditors(settings, probe, selected) {
   const { env, home, platform } = settings;
   const windows = platform === 'win32';
   const mac = platform === 'darwin';
@@ -824,12 +904,13 @@ async function findGameEditors(settings, probe) {
   const unrealSuffix = windows ? 'Engine/Binaries/Win64/UnrealEditor.exe' :
     mac ? 'Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor' : 'Engine/Binaries/Linux/UnrealEditor';
   const godotVersion = /^(\d+\.\d+(?:\.\d+)?)\./m;
+  const check = id => !selected || id === selected;
   const [unityFiles, unrealRoots, godotOnPath, godotCustom] = await Promise.all([
-    subdirectories(unityRoot, unitySuffix),
-    (windows || mac) ? subdirectories(unrealRoot, '') : [],
-    probe(['godot', 'godot4', 'Godot'], ['--version'], godotVersion,
+    check('unity-editor') ? subdirectories(unityRoot, unitySuffix) : [],
+    check('unreal-editor') && (windows || mac) ? subdirectories(unrealRoot, '') : [],
+    check('godot-editor') && probe(['godot', 'godot4', 'Godot'], ['--version'], godotVersion,
       mac ? '/Applications/Godot.app/Contents/MacOS' : []),
-    (async () => {
+    check('godot-editor') && (async () => {
       const file = env.GODOT_PATH;
       if (!await isFile(file)) return;
       const output = await commandOutput(file, ['--version'], settings).catch(() => '');
@@ -838,7 +919,7 @@ async function findGameEditors(settings, probe) {
     })()
   ]);
   let unity;
-  for (const file of [env.UNITY_EDITOR_PATH, ...unityFiles]) {
+  for (const file of check('unity-editor') ? [env.UNITY_EDITOR_PATH, ...unityFiles] : []) {
     if (!await isFile(file)) continue;
     const editorVersion = file.match(/(?:^|[/\\])(\d{4}\.\d+\.\d+f\d+)(?=[/\\])/i)?.[1];
     if (!editorVersion && file !== env.UNITY_EDITOR_PATH) continue;
@@ -847,7 +928,7 @@ async function findGameEditors(settings, probe) {
     break;
   }
   let unreal;
-  for (const root of [env.UNREAL_ENGINE_ROOT, ...unrealRoots]) {
+  for (const root of check('unreal-editor') ? [env.UNREAL_ENGINE_ROOT, ...unrealRoots] : []) {
     if (!root || !path.isAbsolute(root)) continue;
     const file = path.join(root, unrealSuffix);
     if (!await isFile(file)) continue;
@@ -859,7 +940,7 @@ async function findGameEditors(settings, probe) {
     unreal = { file, version: release + '.' + (Number.isInteger(build.PatchVersion) ? build.PatchVersion : 0), association };
     break;
   }
-  return { 'unity-editor': unity, 'unreal-editor': unreal, 'godot-editor': requireVersion(godotCustom || godotOnPath, 4, 3) };
+  return { 'unity-editor': unity, 'unreal-editor': unreal, 'godot-editor': requireVersion(godotCustom || godotOnPath || undefined, 4, 3) };
 }
 
 async function findWebView(settings) {
@@ -872,14 +953,26 @@ async function findWebView(settings) {
   }
 }
 
+async function findFlutter({ env, home, platform }, directories) {
+  const folders = directories(env.FLUTTER_ROOT && path.join(env.FLUTTER_ROOT, 'bin'),
+    path.join(home, 'flutter', 'bin'), path.join(home, 'development', 'flutter', 'bin'));
+  const [file] = await candidates(['flutter'], folders, platform);
+  if (!file) return {};
+  const resolved = await fs.realpath(file).catch(() => file);
+  const cache = path.join(path.dirname(resolved), 'cache');
+  const metadata = await fs.readFile(path.join(cache, 'flutter.version.json'), 'utf8').then(JSON.parse).catch(() => undefined);
+  return {
+    flutter: { file, version: typeof metadata?.frameworkVersion === 'string' ? metadata.frameworkVersion : 'SDK found' },
+    bundledDart: path.join(cache, 'dart-sdk', 'bin')
+  };
+}
+
 async function findSupplementalTools(settings, probe, directories, appleSdk) {
   const { env, home, platform } = settings;
   const windows = platform === 'win32';
   const mac = platform === 'darwin';
   const blenderFolders = windows && env.ProgramFiles ?
     await subdirectories(path.join(env.ProgramFiles, 'Blender Foundation'), '') : [];
-  const flutterFolders = directories(env.FLUTTER_ROOT && path.join(env.FLUTTER_ROOT, 'bin'),
-    path.join(home, 'flutter', 'bin'), path.join(home, 'development', 'flutter', 'bin'));
   const blenderPattern = /\bBlender (\d+\.\d+(?:\.\d+)?)/i;
   const findBlender = async () => {
     if (env.BLENDER_PATH && path.isAbsolute(env.BLENDER_PATH)) {
@@ -890,9 +983,9 @@ async function findSupplementalTools(settings, probe, directories, appleSdk) {
     return probe(['blender'], ['--version'], blenderPattern,
       [...blenderFolders, mac && '/Applications/Blender.app/Contents/MacOS']);
   };
-  const [blender, composer, latex, ollama, xcodegen, iosVersion, flutterFiles, xcodeVersion] = await Promise.all([
+  const [blender, composer, latex, ollama, xcodegen, iosVersion, { flutter, bundledDart }, xcodeVersion] = await Promise.all([
     findBlender(),
-    probe(['composer'], ['--version'], /Composer(?: version)?\s+(\d+\.\d+\.\d+)/i),
+    findComposer(probe),
     probe(['pdflatex'], ['--version'], /pdfTeX[^\r\n]*?(\d+\.\d+(?:\.\d+)?)/i),
     probe(['ollama'], ['--version'], /\bversion(?: is)?\s+(\d+\.\d+\.\d+)/i, [
       windows && env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs', 'Ollama'),
@@ -900,27 +993,17 @@ async function findSupplementalTools(settings, probe, directories, appleSdk) {
     ]),
     mac ? probe(['xcodegen'], ['--version'], /(\d+\.\d+\.\d+)/) : undefined,
     mac && appleSdk ? commandOutput('/usr/bin/xcrun', ['--sdk', 'iphoneos', '--show-sdk-version'], settings).catch(() => '') : '',
-    candidates(['flutter'], flutterFolders, platform),
+    findFlutter(settings, directories),
     mac && appleSdk ? commandOutput('/usr/bin/xcodebuild', ['-version'], settings).then(output =>
       output.match(/^Xcode (\d+(?:\.\d+)+)/m)?.[1]).catch(() => undefined) : undefined
   ]);
   const bibtex = latex && (await candidates(['bibtex'], directories(path.dirname(latex.file)), platform))[0];
-  let flutter;
-  let bundledDart;
-  if (flutterFiles.length) {
-    const file = flutterFiles[0];
-    const resolved = await fs.realpath(file).catch(() => file);
-    bundledDart = path.join(path.dirname(resolved), 'cache', 'dart-sdk', 'bin');
-    const metadata = await fs.readFile(path.join(path.dirname(resolved), 'cache', 'flutter.version.json'), 'utf8')
-      .then(JSON.parse).catch(() => undefined);
-    flutter = { file, version: typeof metadata?.frameworkVersion === 'string' ? metadata.frameworkVersion : 'SDK found' };
-  }
   const dart = await probe(['dart'], ['--version'], /\bDart SDK version: (\d+\.\d+\.\d+)/i, [
     env.DART_SDK && path.join(env.DART_SDK, 'bin'), bundledDart
   ]);
   return {
     blender: requireVersion(blender, 4, 2),
-    composer: requireVersion(composer, 2),
+    composer,
     latex: bibtex ? latex : undefined,
     ollama, xcodegen, flutter, dart: requireVersion(dart, 3, 4),
     'flutter-macos': xcodeVersion ? { version: xcodeVersion, file: '/usr/bin/xcodebuild' } : undefined,
@@ -930,40 +1013,29 @@ async function findSupplementalTools(settings, probe, directories, appleSdk) {
 
 async function detectToolchains(settings = system) {
   const { platform, env, home } = settings;
-  const fromPath = pathDirectories(env);
   const windows = platform === 'win32';
   const mac = platform === 'darwin';
   const programFiles = env.ProgramFiles;
-  const common = [...new Set([
-    ...fromPath, path.join(home, '.local', 'bin'), ...(mac ? ['/opt/homebrew/bin', '/usr/local/bin'] : [])
-  ])];
+  const search = toolchainSearch(settings);
+  const { common, directories, probe } = search;
   const bin = value => value && path.join(value, 'bin');
-  const directories = (...values) => [...new Set([...common, ...values.flat().filter(value => value && path.isAbsolute(value))])];
   const swiftRoot = windows && env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, 'Programs', 'Swift') : undefined;
-  const [appleSdk, studio, pythonInstallations, jdkInstallations, swiftInstallations, cudaInstallations] = await Promise.all([
+  const [appleSdk, studio, jdkInstallations, swiftInstallations, cudaInstallations] = await Promise.all([
     findAppleSdk(settings), findVisualStudio(settings),
-    windows && env.LOCALAPPDATA ? subdirectories(path.join(env.LOCALAPPDATA, 'Programs', 'Python'), '') : [],
     Promise.all(windows && programFiles ? ['Eclipse Adoptium', 'Java', 'Microsoft'].map(folder => subdirectories(path.join(programFiles, folder), 'bin')) :
       mac ? [subdirectories('/Library/Java/JavaVirtualMachines', 'Contents/Home/bin')] : [subdirectories('/usr/lib/jvm', 'bin')]),
     swiftRoot ? subdirectories(path.join(swiftRoot, 'Toolchains'), 'usr/bin') : [],
     windows && programFiles ? subdirectories(path.join(programFiles, 'NVIDIA GPU Computing Toolkit', 'CUDA'), 'bin') : []
   ]);
-  const probe = (names, args, pattern, extra = [], skip) =>
-    detectExecutable(names, args, pattern, directories(extra), settings, skip);
   const rustHome = bin(env.CARGO_HOME || path.join(home, '.cargo'));
   const javaDirs = directories(bin(env.JAVA_HOME), jdkInstallations.flat());
   const cmakeDir = studio && path.join(studio.installation, 'Common7', 'IDE', 'CommonExtensions', 'Microsoft', 'CMake', 'CMake', 'bin');
-  const condaRoots = ['miniforge3', 'miniconda3', 'anaconda3'].flatMap(folder =>
-    [home, env.LOCALAPPDATA, env.ProgramData, '/opt'].filter(Boolean).map(root => path.join(root, folder)));
   const rubyDirs = [bin(env.RUBY_HOME), path.join(home, '.rbenv', 'shims')];
   const additionalTools = Promise.all([
-    probe(['git'], ['--version'], /\bgit version (\d+\.\d+\.\d+)/i, [
-      windows && programFiles && path.join(programFiles, 'Git', 'cmd'),
-      windows && env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs', 'Git', 'cmd')
-    ], file => /\.(?:cmd|bat)$/i.test(file) || (mac && !appleSdk && file === '/usr/bin/git')),
+    findGit(settings, probe, appleSdk),
     probe(['ruby'], ['--version'], /\bruby (\d+\.\d+\.\d+)/, rubyDirs),
     probe(['bundle', 'bundler'], ['--version'], /\bBundler version (\d+\.\d+\.\d+)/i, rubyDirs),
-    probe(['php'], ['--version'], /\bPHP (\d+\.\d+\.\d+)/, env.PHP_HOME),
+    findPhp(settings, probe),
     probe(['lua', 'lua5.5', 'lua5.4', 'lua5.3', 'lua5.2', 'lua5.1', 'lua55', 'lua54', 'lua53', 'luajit'],
       ['-v'], /\bLua(?:JIT)? (\d+\.\d+(?:\.\d+)?)/, env.LUA_HOME),
     probe(windows ? ['lovec', 'love'] : ['love'], ['--version'], /\bL[OÖ]VE (\d+\.\d+(?:\.\d+)?)/i,
@@ -982,23 +1054,17 @@ async function detectToolchains(settings = system) {
     platform === 'linux' ? probe(['make'], ['--version'], /\bGNU Make (\d+\.\d+(?:\.\d+)?)/) : undefined,
     platform === 'linux' ? findKernelHeaders(env, os.release()) : undefined
   ]);
-  const [uv, conda, virtualenv, rustc, cargo, go, swift, javac, kotlin, zig, node, npm, cmake, compiler, cpp, cuda, qt, manager,
+  const [python, rustc, cargo, go, swift, javac, kotlin, zig, nodeTools, cmake, compiler, cpp, cuda, qt, manager,
     [git, ruby, bundler, php, lua, love, gradle, maven, emscripten, android, nasm, make, kernelHeaders], vulkanSdk] = await Promise.all([
-    probe(['uv'], ['--version'], /\buv (\d+\.\d+\.\d+)/, [path.join(home, '.cargo', 'bin')]),
-    probe(['conda'], ['--version'], /\bconda (\d+\.\d+(?:\.\d+)?)/, [
-      env.CONDA_EXE && path.dirname(env.CONDA_EXE),
-      ...condaRoots.map(root => path.join(root, windows ? 'Scripts' : 'bin'))
-    ], file => /\.(?:cmd|bat)$/i.test(file)),
-    probe(['virtualenv'], ['--version'], /\bvirtualenv (\d+\.\d+\.\d+)/, [], file => /\.(?:cmd|bat)$/i.test(file)),
+    findPythonTools(settings, search, appleSdk),
     probe(['rustc'], ['--version'], /rustc (\d+\.\d+\.\d+)/, rustHome),
     probe(['cargo'], ['--version'], /cargo (\d+\.\d+\.\d+)/, rustHome),
-    probe(['go'], ['version'], /\bgo(\d+\.\d+(?:\.\d+)?)/, [bin(env.GOROOT), windows && programFiles ? path.join(programFiles, 'Go', 'bin') : '/usr/local/go/bin']),
+    findGo(settings, probe),
     probe(['swift'], ['--version'], /Swift version (\d+\.\d+(?:\.\d+)?)/i, [bin(env.SWIFT_HOME), env.SWIFTLY_BIN_DIR, ...swiftInstallations], file => mac && !appleSdk && file === '/usr/bin/swift'),
     detectExecutable(['javac'], ['-version'], /\bjavac (\d+(?:\.\d+)*)/, javaDirs, settings, file => mac && file === '/usr/bin/javac'),
     probe(['kotlinc'], ['-version'], /kotlinc-jvm (\d+\.\d+(?:\.\d+)?)/, [bin(env.KOTLIN_HOME), path.join(home, '.sdkman', 'candidates', 'kotlin', 'current', 'bin')]),
     probe(['zig'], ['version'], /^(\d+\.\d+\.\d+)/, env.ZIG_HOME),
-    probe(['node'], ['--version'], /^v(\d+\.\d+\.\d+)/, windows && programFiles ? path.join(programFiles, 'nodejs') : undefined),
-    probe(['npm'], ['--version'], /^(\d+\.\d+\.\d+)/, windows && programFiles ? path.join(programFiles, 'nodejs') : undefined),
+    findNodeTools(settings, probe),
     probe(['cmake'], ['--version'], /cmake version (\d+\.\d+\.\d+)/i, [cmakeDir, windows && programFiles && path.join(programFiles, 'CMake', 'bin')]),
     !studio && !appleSdk ? probe(['clang', 'gcc'], ['--version'], /(\d+\.\d+(?:\.\d+)?)/, [], file => mac && file === '/usr/bin/clang') : undefined,
     !studio && !appleSdk ? probe(['clang++', 'g++', 'c++'], ['--version'], /(\d+\.\d+(?:\.\d+)?)/, [], file => mac && file === '/usr/bin/clang++') : undefined,
@@ -1008,11 +1074,6 @@ async function detectToolchains(settings = system) {
     additionalTools,
     findVulkanSdk(settings)
   ]);
-  const pythonVersions = await findPythonVersions(directories(pythonInstallations,
-    env.VIRTUAL_ENV && path.join(env.VIRTUAL_ENV, windows ? 'Scripts' : 'bin'),
-    env.CONDA_PREFIX && path.join(env.CONDA_PREFIX, windows ? '' : 'bin')), { ...settings, appleSdk }, uv);
-  const python = pythonVersions.find(runtime => runtime.usable) || pythonVersions[0];
-  const tk = pythonVersions.find(runtime => runtime.usable && runtime.tkinter);
   const javaRuntime = javac && await detectExecutable(['java'], ['-version'], /version "(\d+(?:\.\d+)*)/, [path.dirname(javac.file), ...javaDirs], settings, file => mac && file === '/usr/bin/java');
   const emcmake = emscripten && (await candidates(['emcmake'], directories(path.dirname(emscripten.file)), platform))[0];
   const emscriptenGenerator = windows && await probe(['ninja', 'mingw32-make'], ['--version'], /^(?:GNU Make )?(\d+\.\d+(?:\.\d+)?)/);
@@ -1021,7 +1082,6 @@ async function detectToolchains(settings = system) {
     probe(['clang++'], ['--version'], /clang version (\d+\.\d+(?:\.\d+)?)/)
   ]);
   const systemCompiler = studio ? { version: 'MSVC', file: studio.file } : appleSdk ? { version: 'Apple Clang', file: appleSdk.file } : undefined;
-  const virtualenvRuntime = pythonVersions.find(runtime => runtime.usable && runtime.virtualenv);
   const pkgConfig = (module) => probe(['pkg-config', 'pkgconf'], ['--modversion', module], /^(\d+(?:\.\d+)*)/);
   const linuxGraphics = platform === 'linux' ? Promise.all([
     probe(['wx-config'], ['--version'], /^(\d+\.\d+\.\d+)/),
@@ -1055,8 +1115,7 @@ async function detectToolchains(settings = system) {
     ...docker,
     terraform: requireVersion(terraform, 1, 9),
     git,
-    python, uv, conda, virtualenv: virtualenv || virtualenvRuntime && { version: 'Python module', file: virtualenvRuntime.file },
-    tkinter: tk && { version: 'with Python ' + tk.version, file: tk.file },
+    ...python.results,
     rust: rustc && cargo && { ...rustc, version: rustc.version + ' / Cargo ' + cargo.version },
     go: requireVersion(go, 1, 20),
     'wails-go': requireVersion(go, 1, 26, 10),
@@ -1080,23 +1139,15 @@ async function detectToolchains(settings = system) {
     'compose-gradle': requireVersion(gradle, 9, 5),
     'godot-rust': rustc && cargo ? requireVersion(rustc, 1, 94) : undefined,
     'laravel-php': requireVersion(php, 8, 3),
-    'ml-python': pythonVersions.find(runtime => runtime.usable && atLeast(runtime.version, 3, 11)),
     ...android,
     ruby: requireVersion(ruby, 3), bundler, php: requireVersion(php, 8), lua, love: requireVersion(love, 11),
     zig,
-    node: requireVersion(node, 18),
-    'vite-node': node && supportsVite(node.version) ? node : undefined,
-    'expo-node': requireVersion(node, 22, 13),
-    'react-native-node': node && supportsReactNative(node.version) ? node : undefined,
-    'next-node': requireVersion(node, 20, 9),
-    'nuxt-node': node && { ...node, usable: supportsNuxt(node.version) },
-    'electron-node': requireVersion(node, 22, 13),
+    ...nodeTools,
     'tauri-windows': studio ? webView : undefined,
     'tauri-linux': ssl ? webkit : undefined,
     'flutter-windows': studio ? { version: 'MSVC', file: studio.file } : undefined,
     'flutter-linux': cmake && gtk && flutterLinuxTools?.[0] && flutterLinuxTools[1] ? gtk : undefined,
     gtk4, 'gtkmm-4.0': gtkmm,
-    npm,
     cmake: requireVersion(cmake, 3, 24),
     'cmake-3.26': requireVersion(cmake, 3, 26),
     'cmake-3.28': requireVersion(cmake, 3, 28),
@@ -1116,7 +1167,38 @@ async function detectToolchains(settings = system) {
     ...supplemental,
     ...boards
   };
-  return { results, manager, pythonVersions };
+  return { results, manager, pythonVersions: python.pythonVersions };
+}
+
+async function detectProjectGit(settings = system) {
+  return findGit(settings, toolchainSearch(settings).probe, await findAppleSdk(settings));
+}
+
+function usesPythonEnvironment(template) {
+  return template.kind === 'starter' && template.language === 'Python' && !template.docker && !template.embeddedPython;
+}
+
+async function detectGenerationTools(template, settings = system) {
+  const search = toolchainSearch(settings);
+  const { probe, directories } = search;
+  if (usesPythonEnvironment(template)) return findPythonTools(settings, search, await findAppleSdk(settings));
+
+  let results = {};
+  if (template.generatorNode || template.kind === 'react-native') {
+    results = await findNodeTools(settings, probe);
+  } else if (template.kind === 'wails') {
+    const go = await findGo(settings, probe);
+    results = { 'wails-go': requireVersion(go, 1, 26, 10), ...await findWailsTools(go, settings, directories) };
+  } else if (template.generatorTools?.includes('flutter')) {
+    const [{ flutter }, git] = await Promise.all([findFlutter(settings, directories), detectProjectGit(settings)]);
+    results = { flutter, git };
+  } else if (template.generatorTools?.includes('composer')) {
+    const [php, composer] = await Promise.all([findPhp(settings, probe), findComposer(probe)]);
+    results = { 'laravel-php': requireVersion(php, 8, 3), composer };
+  } else if (template.id === 'unity' || template.id === 'unreal') {
+    results = await findGameEditors(settings, probe, `${template.id}-editor`);
+  }
+  return { results, pythonVersions: [] };
 }
 
 function supportsHost(template, platform, architecture) {
@@ -1151,4 +1233,5 @@ function templateAvailability(template, tools, platform, manager, architecture =
   return { ready: supported && missing.length === 0, supported, missing };
 }
 
-module.exports = { detectToolchains, getSetup, supportsReactNative, supportsVite, templateAvailability, templatesForPlatform, toolchains };
+module.exports = { detectGenerationTools, detectProjectGit, detectToolchains, getSetup, supportsReactNative, supportsVite,
+  templateAvailability, templatesForPlatform, toolchains, usesPythonEnvironment };

@@ -8,7 +8,7 @@ The plugin shares Project Wizard’s project generators and lists the starters a
 
 1. Use CLion 2026.2 or newer, and put Node.js 20.9+ on PATH before launching CLion.
 2. Download `project-wizard-clion-<version>.zip` from the GitHub release or build it below. In CLion, open **Settings → Plugins**, click the gear, and select **Install Plugin from Disk…**. Pick the ZIP and restart CLion. [JetBrains plugin installation guide](https://www.jetbrains.com/help/clion/managing-plugins.html#install_plugin_from_disk)
-3. Select a starter in **New Project**. The first selection checks installed SDKs and build tools. The starter shows its requirements alongside its options.
+3. Select a starter in **New Project**. CLion configures its CMake toolchain when you open the generated project. Python and Wails check installed tools to populate their options. Generators that invoke an external SDK look it up when you click **Create**.
 
 ## Build the plugin ZIP
 

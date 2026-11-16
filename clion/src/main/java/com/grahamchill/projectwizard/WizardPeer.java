@@ -40,10 +40,9 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
     private final JPanel panel = new JPanel(new BorderLayout(0, 8));
     private final JPanel optionsPanel = column();
     private final JBTextField search = new JBTextField();
-    private final JBLabel status = new JBLabel("Scanning project templates…");
+    private final JBLabel status = new JBLabel();
     private final JBTextArea description = new JBTextArea(2, 32);
     private final JComboBox<Template> templateBox = new JComboBox<>();
-    private final JBCheckBox readyOnly = new JBCheckBox("Ready to use");
     private final JButton refresh = new JButton("Refresh");
     private final JButton custom = new JButton("Custom ZIP folder…");
     private final JButton monoGame = new JButton("Install MonoGame templates");
@@ -60,10 +59,10 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
     private final JComboBox<Choice> libraries = new JComboBox<>();
     private TextFieldWithBrowseButton location;
     private Runnable checkValid = () -> {};
-    private JsonObject context;
     private Template active;
     private String zipFolder = PropertiesComponent.getInstance().getValue(ZIP_FOLDER, "");
     private boolean busy;
+    private boolean loaded;
     private boolean updating;
     private String error;
 
@@ -72,11 +71,11 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         JPanel header = column();
         JPanel tools = new JPanel(new FlowLayout(FlowLayout.LEADING, 4, 1));
         tools.add(refresh);
+        refresh.setVisible(templateId == null);
         if (templateId == null) {
             search.getEmptyText().setText("Search ZIP and MonoGame templates");
             header.add(search);
             header.add(row("Template", templateBox));
-            tools.add(readyOnly);
             tools.add(custom);
         }
         header.add(tools);
@@ -95,11 +94,10 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         search.getDocument().addDocumentListener(new DocumentAdapter() {
             @Override protected void textChanged(@NotNull DocumentEvent event) { filterTemplates(); }
         });
-        readyOnly.addActionListener(event -> filterTemplates());
         templateBox.addActionListener(event -> { if (!updating) showOptions(); });
-        refresh.addActionListener(event -> load("catalog", true));
+        refresh.addActionListener(event -> load("catalog"));
         custom.addActionListener(event -> chooseZipFolder());
-        monoGame.addActionListener(event -> load("installMonoGame", true));
+        monoGame.addActionListener(event -> load("installMonoGame"));
         icons.addActionListener(event -> chooseIcons());
         testing.addActionListener(event -> {
             choices.get("framework").setEnabled(testing.isSelected());
@@ -125,7 +123,7 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
     }
 
     @Override public @NotNull JComponent getComponent() {
-        if (!busy && context == null && error == null) load("catalog", false);
+        if (!busy && !loaded && error == null) load("catalog");
         return panel;
     }
 
@@ -139,7 +137,6 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         if (busy) return new ValidationInfo("Wait for Project Wizard to finish.");
         if (error != null) return new ValidationInfo(error);
         if (active == null) return new ValidationInfo("Choose a template.", templateBox);
-        if (flag(active.data(), "disabled")) return new ValidationInfo("Install the required generator tools and refresh.", templateBox);
         if (selected("build").data().has("canCreate") && !flag(selected("build").data(), "canCreate")) {
             return new ValidationInfo("Install the tools required by the selected build.");
         }
@@ -159,7 +156,6 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         var request = new JsonObject();
         if (active != null) request.addProperty("templateId", active.id());
         request.addProperty("zipDirectory", zipFolder);
-        request.add("context", context);
         if (git.getSelectedIndex() != 0) request.addProperty("initializeGit", git.getSelectedIndex() == 1);
         var selectedIcons = new JsonArray();
         iconPaths.forEach(selectedIcons::add);
@@ -181,11 +177,12 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         return request;
     }
 
-    private void load(String action, boolean refreshCatalog) {
+    private void load(String action) {
         if (busy) return;
         var request = new JsonObject();
         request.addProperty("action", action);
-        request.addProperty("zipDirectory", zipFolder);
+        if (templateId == null) request.addProperty("zipDirectory", zipFolder);
+        else request.addProperty("templateId", templateId);
         if (location != null) {
             try {
                 Path parent = Path.of(FileUtil.expandUserHome(location.getText())).getParent();
@@ -194,11 +191,11 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         }
         busy = true;
         error = null;
-        status.setText(action.equals("installMonoGame") ? "Installing MonoGame templates…" : "Scanning project templates and toolchains…");
+        status.setText(action.equals("installMonoGame") ? "Installing MonoGame templates…" : "Loading project options…");
         setBusy();
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
-                JsonObject result = action.equals("catalog") ? WizardEngine.catalog(request, refreshCatalog) : WizardEngine.run(request);
+                JsonObject result = WizardEngine.run(request);
                 ApplicationManager.getApplication().invokeLater(() -> finish(result, null), com.intellij.openapi.application.ModalityState.any());
             } catch (Exception failure) {
                 ApplicationManager.getApplication().invokeLater(() -> finish(null, failure.getMessage()), com.intellij.openapi.application.ModalityState.any());
@@ -209,16 +206,14 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
     private void finish(JsonObject result, String failure) {
         busy = false;
         error = failure;
+        refresh.setVisible(result == null || flag(result, "canRefresh"));
         if (result != null) {
+            loaded = true;
             templates.clear();
             for (var item : array(result, "templates")) {
-                var template = new Template(item.getAsJsonObject());
-                if (templateId == null ? List.of("zip", "monogame").contains(text(template.data(), "group")) : template.id().equals(templateId)) {
-                    templates.add(template);
-                }
+                templates.add(new Template(item.getAsJsonObject()));
             }
             templates.sort(Comparator.comparing(Template::label, String.CASE_INSENSITIVE_ORDER));
-            context = result.getAsJsonObject("context");
             monoGame.setVisible(templateId == null && flag(result, "canInstallMonoGame"));
             String zipError = text(result, "zipError");
             status.setText(templateId == null ? (zipError.isEmpty() ? templates.size() + " templates available" : zipError) : "");
@@ -228,15 +223,14 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
     }
 
     private void setBusy() {
-        for (var control : List.of(search, templateBox, readyOnly, refresh, custom, monoGame)) control.setEnabled(!busy);
+        for (var control : List.of(search, templateBox, refresh, custom, monoGame)) control.setEnabled(!busy);
         changed();
     }
 
     private void filterTemplates() {
         String previous = active == null ? "" : active.id();
         String query = search.getText().toLowerCase(Locale.ROOT).strip();
-        var matching = templates.stream().filter(template -> (!readyOnly.isSelected() || flag(template.data(), "ready")) &&
-            template.searchText().contains(query)).toList();
+        var matching = templates.stream().filter(template -> template.searchText().contains(query)).toList();
         updating = true;
         templateBox.setModel(new DefaultComboBoxModel<>(matching.toArray(Template[]::new)));
         matching.stream().filter(template -> template.id().equals(previous)).findFirst().ifPresent(templateBox::setSelectedItem);
@@ -378,7 +372,7 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         if (chooser.showOpenDialog(panel) == JFileChooser.APPROVE_OPTION) {
             zipFolder = chooser.getSelectedFile().getAbsolutePath();
             PropertiesComponent.getInstance().setValue(ZIP_FOLDER, zipFolder);
-            load("catalog", true);
+            load("catalog");
         }
     }
 

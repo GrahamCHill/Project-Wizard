@@ -249,14 +249,26 @@ async function configureEmscripten(project, template, name, targets) {
     '    set_target_properties(' + template.cmakeTarget + ' PROPERTIES OUTPUT_NAME index SUFFIX ".html")\n' +
     '    target_link_options(' + template.cmakeTarget + ' PRIVATE --emrun)\nendif()\n');
   await fs.appendFile(path.join(project, '.gitignore'), '\nbuild-web/\n');
-  const commands = ['emcmake cmake -S . -B build-web', 'cmake --build build-web', 'emrun build-web/index.html'];
-  const note = 'Put CMake 3.24 or newer on PATH and activate the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) in your terminal. On Windows, also put Ninja or MinGW Make on PATH. Serve the generated HTML, JavaScript, and WebAssembly files together over HTTP.';
+  const commands = [
+    'emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
+    'cmake --build build-web --config Release',
+    'emrun build-web/index.html'
+  ];
+  const note = 'Put CMake 3.24 or newer on PATH and activate the Emscripten SDK in your terminal. On Windows, also put Ninja or MinGW Make on PATH. For a new build directory, use a Ninja or Makefiles generator to export the compile database. [Emscripten SDK setup](https://emscripten.org/docs/getting_started/downloads.html)';
   const readme = path.join(project, 'README.md');
   if (desktop) {
     await fs.appendFile(readme, '\n## Web (Emscripten)\n\n' + note + '\n\n```sh\n' + commands.join('\n') + '\n```\n');
   } else {
     await fs.writeFile(readme, starterReadme(name, template.description, commands, note));
   }
+  await fs.appendFile(readme, `
+## Publish the browser build
+
+The browser build uses \`build-web/index.html\`, \`index.js\`, and \`index.wasm\`. Include any additional runtime files your game uses, such as a generated \`.data\` file, and preserve their relative paths.
+
+- **itch.io** — ZIP the runtime files with \`index.html\` at the root of the archive. Set **Kind of Game** to **HTML Game**, upload the ZIP, and preview it on the project page. [itch.io HTML5 guide](https://itch.io/docs/creators/html5)
+- **Website** — Upload the same files to a static host and open the hosted \`index.html\` over HTTP or HTTPS. Serve \`.wasm\` as \`application/wasm\`. [Emscripten hosting guide](https://emscripten.org/docs/compiling/WebAssembly.html#web-server-setup)
+`);
 }
 
 module.exports = { cmakeLibraries, cmakeLibraryLine, configureEmscripten, parseCmakeLibraries, writeCmakeOptions };

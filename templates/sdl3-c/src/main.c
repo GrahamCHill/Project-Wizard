@@ -3,6 +3,40 @@
 #include "starter.h"
 #include <stdio.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
+struct Game {
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+};
+
+static void drawFrame(void *context)
+{
+    struct Game *game = (struct Game *)context;
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_EVENT_QUIT) {
+#ifdef __EMSCRIPTEN__
+            emscripten_cancel_main_loop();
+#endif
+            SDL_DestroyRenderer(game->renderer);
+            SDL_DestroyWindow(game->window);
+            SDL_Quit();
+            game->window = NULL;
+            return;
+        }
+    }
+
+    SDL_SetRenderDrawColor(game->renderer, 20, 30, 48, 255);
+    SDL_RenderClear(game->renderer);
+    SDL_FRect rectangle = { 32.0f, 32.0f, (float)starter_add(96, 64), 96.0f };
+    SDL_SetRenderDrawColor(game->renderer, 62, 177, 210, 255);
+    SDL_RenderFillRect(game->renderer, &rectangle);
+    SDL_RenderPresent(game->renderer);
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -27,25 +61,13 @@ int main(int argc, char **argv)
     }
     SDL_SetRenderVSync(renderer, 1);
 
-    int running = 1;
-    while (running) {
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_QUIT) {
-                running = 0;
-            }
-        }
-
-        SDL_SetRenderDrawColor(renderer, 20, 30, 48, 255);
-        SDL_RenderClear(renderer);
-        SDL_FRect rectangle = { 32.0f, 32.0f, (float)starter_add(96, 64), 96.0f };
-        SDL_SetRenderDrawColor(renderer, 62, 177, 210, 255);
-        SDL_RenderFillRect(renderer, &rectangle);
-        SDL_RenderPresent(renderer);
-    }
-
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
+    static struct Game game;
+    game.window = window;
+    game.renderer = renderer;
+#ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop_arg(drawFrame, &game, 0, 1);
+#else
+    while (game.window) drawFrame(&game);
+#endif
     return 0;
 }

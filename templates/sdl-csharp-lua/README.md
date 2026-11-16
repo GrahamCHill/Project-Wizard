@@ -22,3 +22,5 @@ dotnet publish -c Release --use-current-runtime --self-contained -o dist
 ~~~
 
 Share the whole `dist/` directory. It includes the .NET runtime, the C++ library with SDL and Lua linked in, the Lua script, and the applicable graphics runtime files. The destination system supplies GPU drivers and platform graphics libraries.
+
+ZIP the published folder or macOS app bundle for each platform. Upload each ZIP as a platform-tagged download on itch.io or link to it on your website. [itch.io project setup](https://itch.io/docs/creators/getting-started)

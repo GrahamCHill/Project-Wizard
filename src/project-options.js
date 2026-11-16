@@ -8,6 +8,7 @@ const { replaceTokens } = require('./projects');
 const { configureJava, parseJavaDependencies } = require('./java-options');
 const { configureNativeApp, executableIconFormats, mobileIconTemplate } = require('./native-app');
 const { configureNativeDistribution } = require('./native-distribution');
+const { configureCmakeEditor } = require('./vscode-setup');
 const { configureNativeWindowIcon } = require('./native-window-icons');
 const { iconVariants } = require('./icon-data');
 const { configureDesktopApp } = require('./desktop-icons');
@@ -332,24 +333,31 @@ async function applyProjectOptions(project, template, name, options, parent, log
     if (options.type !== 'cmake' && (template.group === 'desktop' || template.sdlBackend || (template.group === 'raylib' && template.language === 'C#'))) {
       await configureDesktopApp(project, template, name, options, new Map());
     }
-    return;
+  } else {
+    const { outputs, raster } = await iconVariants(options.icons, executableIconFormats(template));
+    const mobile = mobileIconTemplate(template);
+    if (raster && !mobile) outputs.set('.png', { data: await raster.png(256) });
+    await applyBuildOptions(project, template, name, { ...options, icons: outputs }, parent, log);
+    if (mobile) return configureMobileIcons(project, template, name, raster);
+    if (raster && options.type === 'cmake' && !template.cmakeLibrary) {
+      await configureNativeWindowIcon(project, template, options.build, raster);
+    }
+    if (options.type !== 'cmake' || template.cmakeLibrary) {
+      await configureDesktopApp(project, template, name, options, outputs, raster);
+    }
   }
-  const { outputs, raster } = await iconVariants(options.icons, executableIconFormats(template));
-  const mobile = mobileIconTemplate(template);
-  if (raster && !mobile) outputs.set('.png', { data: await raster.png(256) });
-  await applyBuildOptions(project, template, name, { ...options, icons: outputs }, parent, log);
-  if (mobile) return configureMobileIcons(project, template, name, raster);
-  if (raster && options.type === 'cmake' && !template.cmakeLibrary) {
-    await configureNativeWindowIcon(project, template, options.build, raster);
+  if (options.type === 'cmake' && !template.androidCmake) {
+    await configureCmakeEditor(project, { webOnly: options.targets && !options.targets.includes('native') });
   }
-  if (options.type !== 'cmake' || template.cmakeLibrary) return configureDesktopApp(project, template, name, options, outputs, raster);
+  if (options.type === 'dotnet' && template.nativeTarget) await configureCmakeEditor(project, { nativeBridge: true });
 }
 
 async function applyBuildOptions(project, template, name, options, parent, log) {
   if (options.type === 'cmake') {
-    if (options.targets?.includes('emscripten')) await configureEmscripten(project, template, name, options.targets);
+    const targets = options.targets || (template.sdl && template.webTarget ? ['native', 'emscripten'] : undefined);
+    if (targets?.includes('emscripten')) await configureEmscripten(project, template, name, targets);
     await configureNativeApp(project, template, name, options);
-    await writeCmakeOptions(project, template, options.packages, options.framework, options.targets);
+    await writeCmakeOptions(project, template, options.packages, options.framework, targets);
     return configureNativeDistribution(project, template, options);
   }
   if (options.type === 'java') return configureJava(project, template, name, options);

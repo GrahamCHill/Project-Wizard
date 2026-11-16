@@ -41,7 +41,7 @@ function resolveSdl(template, options) {
     renderer.note,
     'Run app from build/ or build/Debug/, or open the .app bundle on macOS.'
   ].filter(Boolean).join(' ');
-  return { ...template, language, sourceDirectory, note, renderer };
+  return { ...template, language, sourceDirectory, note, renderer, webTarget: renderer.id === 'default' };
 }
 
 function renderSdl(source, { version, major }, renderer) {

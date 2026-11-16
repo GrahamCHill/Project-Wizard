@@ -191,6 +191,10 @@ test('scaffolds mixed SDL backends and both plugin contracts with Lua', async t 
     assert.match(cmake, /SDL3::SDL3-static lua_runtime/);
     assert.match(await fs.readFile(path.join(project, 'native/cmake/ProjectOptions.cmake'), 'utf8'), /pw_native PRIVATE uv_a/);
     assert.match(await fs.readFile(path.join(project, 'scripts/behavior.lua'), 'utf8'), /function update\(/);
+    const settings = JSON.parse(await fs.readFile(path.join(project, '.vscode', 'settings.json'), 'utf8'));
+    assert.equal(settings['cmake.sourceDirectory'], '${workspaceFolder}/native');
+    assert.equal(settings['cmake.buildDirectory'], '${workspaceFolder}/native/build/vscode');
+    assert.match(await fs.readFile(path.join(project, '.clangd'), 'utf8'), /CompilationDatabase: native\/build\/clangd/);
   }
   for (const [id, contract] of [['cpp-plugin-host', 'include/plugin_api.h'], ['csharp-plugin-host', 'contracts/IPlugin.cs']]) {
     const template = starters.find(item => item.id === id);
@@ -463,9 +467,21 @@ test('configures the Emscripten target for both Raylib and basic CMake languages
     assert.match(cmake, /OUTPUT_NAME index SUFFIX "\.html"/);
     const readme = await fs.readFile(path.join(project, 'README.md'), 'utf8');
     assert.match(readme, /emcmake cmake -S \. -B build-web/);
+    assert.match(readme, /-DCMAKE_EXPORT_COMPILE_COMMANDS=ON/);
     assert.match(readme, /emrun build-web\/index\.html/);
+    assert.match(readme, /Publish the browser build/);
     assert.match(readme, /ctest --test-dir build-web/);
     assert.match(await fs.readFile(path.join(project, '.gitignore'), 'utf8'), /build-web\//);
+    const settings = JSON.parse(await fs.readFile(path.join(project, '.vscode', 'settings.json'), 'utf8'));
+    const clangd = await fs.readFile(path.join(project, '.clangd'), 'utf8');
+    if (desktop) {
+      assert.equal(settings['C_Cpp.default.configurationProvider'], 'ms-vscode.cmake-tools');
+      assert.match(clangd, /CompilationDatabase: build\/clangd/);
+    } else {
+      assert.equal(settings['cmake.configureOnOpen'], false);
+      assert.deepEqual(settings['C_Cpp.default.compileCommands'], ['${workspaceFolder}/build-web/compile_commands.json']);
+      assert.match(clangd, /CompilationDatabase: build-web/);
+    }
     if (desktop) assert.match(readme, /^ctest --test-dir build -C Debug/m);
   }
   assert.equal(projectOptions(starters.find(item => item.id === 'cuda-cmake')).targetChoice, undefined);
@@ -752,8 +768,10 @@ test('offers both SDL versions and all compatible renderers from one project ent
         const name = `sdl${major}-${renderer}-${language}`;
         const options = readProjectOptions(template, { build: 'sdl' + major, renderer, language, testing: true }, undefined, 'win32');
         assert.equal(options.framework, language === 'c' ? 'ctest' : 'gtest');
-        const project = await createProject(root, name, (destination, parent) =>
-          writeStarter(template, name, destination, parent, undefined, {}, options));
+        const project = await createProject(root, name, async (destination, parent) => {
+          await writeStarter(template, name, destination, parent, undefined, {}, options);
+          await applyProjectOptions(destination, template, name, options);
+        });
         const cmake = await fs.readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
         assert.ok(cmake.includes(`SDL${major}::SDL${major}-static${target ? ' ' + target : ''}`));
         assert.doesNotMatch(cmake, /__SDL_[A-Z]+__/);
@@ -761,6 +779,17 @@ test('offers both SDL versions and all compatible renderers from one project ent
         assert.match(source, /starter_add\(/);
         assert.match(source, major === 3 ? /SDL_EVENT_QUIT/ : /SDL_QUIT/);
         assert.doesNotMatch(source, major === 3 ? /\bSDL_QUIT\b/ : /SDL_EVENT_QUIT/);
+        const readme = await fs.readFile(path.join(project, 'README.md'), 'utf8');
+        assert.match(readme, /VS Code IntelliSense and autocomplete/);
+        assert.match(readme, /\bplatform-tagged download\b/);
+        assert.match(cmake, /include\(cmake\/Distribution.cmake\)/);
+        if (renderer === 'default') {
+          assert.match(source, /emscripten_set_main_loop_arg\(drawFrame/);
+          assert.match(cmake, /OUTPUT_NAME index SUFFIX "\.html"/);
+          assert.match(readme, /Publish the browser build/);
+        } else {
+          assert.doesNotMatch(cmake, /OUTPUT_NAME index SUFFIX "\.html"/);
+        }
         if (renderer.startsWith('dx')) {
           assert.ok(source.includes('"direct3d' + renderer.slice(2) + '"'));
           assert.match(cmake, /requires Windows/);

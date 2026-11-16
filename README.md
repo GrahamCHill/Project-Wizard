@@ -82,6 +82,30 @@ On Linux, the wizard also offers a kernel module with load and unload hooks and 
 
 The CMake desktop starters, including SDL2, SDL3, and their OpenGL and Vulkan variants, include a `distribution` build target. Configure a Release build and run `cmake --build build --config Release --target distribution` to collect the app and its runtime libraries in `build/dist/Release/`. Share the entire folder for the target OS and architecture. Windows Vulkan packages include the loader. The macOS packaging step copies linked dylibs and frameworks into the `.app`, rewrites their paths, and adds MoltenVK for Vulkan apps. Graphics drivers and OS libraries come from the destination system. Other desktop starters provide packaging commands for their toolchains in the generated README. [CMake BundleUtilities](https://cmake.org/cmake/help/latest/module/BundleUtilities.html)
 
+### Publish Raylib and SDL on itch.io or a website
+
+**Browser builds.** Choose **Web (Emscripten)** in Project setup for Raylib C or C++. New SDL C and C++ projects with **SDL 2D (automatic)** include both desktop and Emscripten builds for SDL 2 and SDL 3. The OpenGL, Vulkan, and DirectX SDL starters ship as native downloads. For an older SDL project you want to port, follow SDL’s guide to adapting the main loop and renderer for the browser. [SDL Emscripten guide](https://wiki.libsdl.org/SDL3/README-emscripten)
+
+Activate the Emscripten SDK, then run these commands from the generated project folder. On Windows, put Ninja or MinGW Make on PATH. [Emscripten SDK setup](https://emscripten.org/docs/getting_started/downloads.html)
+
+```sh
+emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build build-web --config Release
+emrun build-web/index.html
+```
+
+Package `build-web/index.html`, `index.js`, and `index.wasm` together. For an unmodified starter, run these commands from the project root to create the ZIP. If you add assets or preload data, include the extra runtime files and keep their relative paths.
+
+```sh
+cd build-web
+cmake -E tar cf game-web.zip --format=zip index.html index.js index.wasm
+```
+
+- **itch.io** — Set **Kind of Game** to **HTML Game**, upload the ZIP with `index.html` at its root, and preview the game on the project page. [itch.io HTML5 guide](https://itch.io/docs/creators/html5)
+- **Website** — Upload the runtime files to a static host, open the hosted `index.html` over HTTP or HTTPS, and serve `.wasm` as `application/wasm`. [Emscripten hosting guide](https://emscripten.org/docs/compiling/WebAssembly.html#web-server-setup)
+
+**Desktop downloads.** Generate one ZIP per OS and architecture. For C or C++ starters, build the `distribution` target and ZIP the complete `build/dist/Release/` output. For C# and mixed-language starters, use the generated README’s `dotnet publish` or macOS app bundle instructions and ZIP the complete output. On itch.io, upload the ZIPs as downloads and tag each by platform. On a website, link each archive for download. [itch.io first project guide](https://itch.io/docs/creators/getting-started)
+
 Next.js, Nuxt, and Tauri use their official generators with npm. The wizard downloads the starter during creation. Run `npm install` in the generated project and follow its README for development and build commands. Tauri uses a TypeScript frontend and a Rust backend. Electron comes with separate main, preload, and renderer files and uses Electron Forge to package the app. [Next.js CLI](https://nextjs.org/docs/app/api-reference/cli/create-next-app) · [Nuxt starters](https://github.com/nuxt/starter) · [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) · [Electron Forge packaging](https://www.electronforge.io/cli#package)
 
 Under **Desktop**, **Wails Desktop** offers **Wails 3** and **Wails 2** in Project setup, with Wails 3 preferred when both are ready. The wizard detects the matching CLI and uses its official generator to create a Go backend and Vite frontend. The generated README covers development and packaging on Windows, macOS, and Linux. A selected PNG or WebP becomes the source image for the Wails packaging tools. [Wails 3 installation](https://v3.wails.io/getting-started/installation/) · [Wails 2 installation](https://wails.io/docs/gettingstarted/installation/)
@@ -153,6 +177,45 @@ The Kotlin Android XR starter demonstrates a spatial panel and switching between
 - **Tests** are optional. C can use CTest, C++ and CUDA can use GoogleTest or Catch2, Python can use pytest or `unittest`, and JavaScript and TypeScript can use the Node.js test runner or Vitest where supported. C# offers xUnit and NUnit, Java and Kotlin offer JUnit with Maven, and Swift packages offer XCTest. Dart, Go, Rust, and Zig offer their native test runners. Follow the generated README to run the example.
 - **CMake test examples** call the same `starter_add` function that the app uses. The implementation is in `src/starter.c` or `src/starter.cpp`, with a declaration in `include/starter.h`. The native Android Raylib samples run these tests on the host compiler.
 - **Kotlin Multiplatform** includes a shared `kotlin.test` suite by default. Run `gradle jvmTest jsNodeTest` to test the same function on the JVM and Node.js.
+
+### Fix C/C++ IntelliSense and autocomplete in VS Code
+
+Open the generated project folder in VS Code or VSCodium so its workspace settings apply. CMake fetches libraries and computes each source file’s include paths and compiler flags during configuration. Reconfigure when you change dependencies.
+
+**Microsoft C/C++ and CMake Tools.** Install both extensions. New desktop CMake starters set CMake Tools as the IntelliSense provider. For an existing project, run **C/C++: Change Configuration Provider** and choose **CMake Tools**, or merge this setting into `.vscode/settings.json`.
+
+```json
+{
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}
+```
+
+Run **CMake: Select a Kit** to choose your compiler, then **CMake: Configure**. For an existing mixed C# and C++ starter, also set `cmake.sourceDirectory` to `${workspaceFolder}/native` and `cmake.buildDirectory` to `${workspaceFolder}/native/build/vscode`. For standalone or mixed C# starters, install the C# extension and run `dotnet restore` so it can resolve NuGet libraries such as Raylib-cs. [VS Code IntelliSense guide](https://code.visualstudio.com/docs/cpp/configure-intellisense)
+
+**clangd.** Keep one C/C++ language server enabled in the workspace. With Ninja and the native compiler available, generate the compile database below. For MSVC, run the command in a Developer PowerShell. A separate directory preserves your existing CMake generator and build. For a mixed C# and C++ starter, use `-S native -B native/build/clangd`.
+
+```sh
+cmake -S . -B build/clangd -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
+
+New starters include `.clangd`. For existing projects, create or update `.clangd` in the project root. Adjust the path if you generated the database in a different directory.
+
+```yaml
+CompileFlags:
+  CompilationDatabase: build/clangd
+```
+
+**Web-only projects.** Run the Emscripten configure command from the publishing section with a Ninja or Makefiles generator. New projects point both language servers at `build-web/compile_commands.json`. In older projects, set `CompilationDatabase` to `build-web` for clangd, or set `C_Cpp.default.compileCommands` to `["${workspaceFolder}/build-web/compile_commands.json"]` for Microsoft C/C++. If the C/C++ extension is still using a configuration provider for that workspace, select the compile database with **C/C++: Select IntelliSense Configuration**. [CMake compile database](https://cmake.org/cmake/help/latest/variable/CMAKE_EXPORT_COMPILE_COMMANDS.html) · [clangd configuration](https://clangd.llvm.org/config#compilationdatabase)
+
+For clangd to recognize the Emscripten target and SDK headers, add a `--query-driver` argument to `clangd.arguments` in `.vscode/settings.json`. Use the compiler paths from `compile_commands.json`. An SDK installed at `C:/emsdk` on Windows uses the following setting. [clangd compiler queries](https://clangd.llvm.org/guides/system-headers#query-driver)
+
+```json
+{
+  "clangd.arguments": ["--query-driver=C:/emsdk/upstream/emscripten/emcc.exe,C:/emsdk/upstream/emscripten/em++.exe"]
+}
+```
+
+Use **Go to Definition** on `InitWindow` in Raylib or `SDL_Init` in SDL to check that your editor can find the library header.
 
 ## Custom ZIP templates
 

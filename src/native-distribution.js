@@ -23,6 +23,8 @@ async function configureNativeDistribution(project, template, options) {
     await fs.writeFile(path.join(cmake, file), configured, { flag: 'wx' });
   }
   await fs.appendFile(path.join(project, 'CMakeLists.txt'), '\ninclude(cmake/Distribution.cmake)\n');
+  const publish = template.sdl || template.group === 'raylib' ?
+    '\nZIP the entire staged directory for each target OS and architecture. Upload each ZIP as a platform-tagged download on itch.io or link to it on your website. [itch.io project setup](https://itch.io/docs/creators/getting-started)\n' : '';
   await fs.appendFile(path.join(project, 'README.md'), `
 ## Distribution
 
@@ -34,7 +36,7 @@ cmake --build build --config Release --target distribution
 ~~~
 
 Share the entire \`build/dist/Release/\` directory. Each packaging run recreates that directory. On Windows, launch the executable. On macOS, open the app bundle. On Linux, use \`${qt ? 'bin/app' : './run.sh'}\` on a compatible distribution. Graphics drivers and operating-system libraries are supplied by the destination system.
-${vulkan ? '\nThe Windows package includes the LunarG Vulkan loader. Packaging downloads the pinned loader once, or you can set `PROJECT_VULKAN_RUNTIME_DIR` to a directory containing the matching `vulkan-1.dll` and `VulkanRT-License.txt`. On macOS, package with the Vulkan SDK installed so the app bundle can include MoltenVK.\n' : ''}`);
+${vulkan ? '\nThe Windows package includes the LunarG Vulkan loader. Packaging downloads the pinned loader once, or you can set `PROJECT_VULKAN_RUNTIME_DIR` to a directory containing the matching `vulkan-1.dll` and `VulkanRT-License.txt`. On macOS, package with the Vulkan SDK installed so the app bundle can include MoltenVK.\n' : ''}${publish}`);
 }
 
 module.exports = { configureNativeDistribution };

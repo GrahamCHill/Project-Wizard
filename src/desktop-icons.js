@@ -280,7 +280,7 @@ async function dotnetIcons(project, template, name, icons) {
   if (raylib) await macBundle(project, template, name, icons.has('.icns'));
   await fs.appendFile(path.join(project, '.gitignore'), '\n/dist/\n');
   const publish = `Run \`dotnet publish -c Release --use-current-runtime --self-contained -o dist\` on ${raylib ? 'Windows or Linux' : 'Windows'}. Share the whole \`dist/\` folder, including the bundled .NET runtime.`;
-  if (raylib) await fs.appendFile(path.join(project, 'README.md'), '\n' + publish + '\n');
+  if (raylib) await fs.appendFile(path.join(project, 'README.md'), '\n' + publish + '\n\nZIP the published folder or macOS app bundle for each platform. Upload each ZIP as a platform-tagged download on itch.io or link to it on your website. [itch.io project setup](https://itch.io/docs/creators/getting-started)\n');
   else await appendDistribution(project, publish);
   if (ico) await appendReadme(project, 'The Windows app host embeds `assets/app.ico` when built with `dotnet build` or `dotnet publish`.');
 }

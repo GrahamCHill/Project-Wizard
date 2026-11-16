@@ -71,6 +71,7 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/clion-sdk/lib
+            ${{ runner.temp }}/clion-sdk/plugins/clion/lib/modules/intellij.cidr.execution.jar
             ${{ runner.temp }}/clion-sdk/product-info.json
           key: clion-sdk-${{ runner.os }}-${{ runner.arch }}-${{ env.CLION_VERSION }}
       - name: Download the CLion SDK

@@ -2,7 +2,6 @@ package com.grahamchill.projectwizard;
 
 import com.google.gson.JsonObject;
 import com.intellij.facet.ui.ValidationResult;
-import com.intellij.icons.AllIcons;
 import com.intellij.ide.util.projectWizard.AbstractNewProjectStep;
 import com.intellij.ide.util.projectWizard.CustomStepProjectGenerator;
 import com.intellij.ide.util.projectWizard.ProjectSettingsStepBase;
@@ -16,6 +15,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.platform.DirectoryProjectGenerator;
 import com.intellij.platform.HideableProjectGenerator;
 import com.intellij.platform.ProjectGeneratorPeer;
+import com.jetbrains.cidr.cpp.cmake.projectWizard.generators.CLionProjectGenerator;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.Icon;
@@ -27,17 +27,19 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
-public abstract class ProjectWizardGenerator implements DirectoryProjectGenerator<JsonObject>,
+public abstract class ProjectWizardGenerator extends CLionProjectGenerator<JsonObject> implements
     CustomStepProjectGenerator<JsonObject>, HideableProjectGenerator {
     private static final Set<String> IDE_ENTRIES = Set.of(".idea", ".git");
     private final String templateId;
     private final String label;
+    private final WizardGroup group;
     private final List<String> platforms;
     private final List<String> nativeNames;
 
-    protected ProjectWizardGenerator(String templateId, String label, List<String> platforms, List<String> nativeNames) {
+    protected ProjectWizardGenerator(String templateId, String label, WizardGroup group, List<String> platforms, List<String> nativeNames) {
         this.templateId = templateId;
         this.label = label;
+        this.group = group;
         this.platforms = platforms;
         this.nativeNames = nativeNames;
     }
@@ -46,7 +48,13 @@ public abstract class ProjectWizardGenerator implements DirectoryProjectGenerato
     public @NotNull String getName() { return label; }
 
     @Override
-    public Icon getLogo() { return AllIcons.Nodes.Folder; }
+    public Icon getLogo() { return group.icon; }
+
+    @Override public String getGroupName() { return "project-wizard-" + group.name(); }
+
+    @Override public String getGroupDisplayName() { return group.label; }
+
+    @Override public int getGroupOrder() { return GroupOrders.OTHER.order + group.ordinal() + 1; }
 
     @Override
     public @NotNull ProjectGeneratorPeer<JsonObject> createPeer() { return new WizardPeer(templateId); }

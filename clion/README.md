@@ -1,6 +1,6 @@
 # Project Wizard for CLion
 
-Open **File → New Project** or **New Project** on the welcome screen. Select a starter such as **Raylib for C++** or **SDL** from the left sidebar under **Other**. Enter the project location and choose its options before clicking **Create**.
+Open **File → New Project** or **New Project** on the welcome screen. Select **Raylib for C++** under **Raylib**, **SDL** under **Graphics**, or another starter from the grouped sidebar. Enter the project location and choose its options before clicking **Create**.
 
 The plugin shares Project Wizard’s project generators and lists the starters available on the current platform. CLion’s own basic CMake, CUDA, and empty projects use the built-in entries. Other equivalent templates, such as Next.js, use the existing entry when its generator is installed. Select **Custom ZIP and MonoGame Templates** to import ZIPs or install the MonoGame templates when .NET is available.
 

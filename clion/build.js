@@ -35,7 +35,9 @@ function javacArgument(value) {
 }
 
 async function compile(ide, staging) {
-  const jars = (await files(path.join(ide, 'lib'))).filter(file => file.endsWith('.jar'));
+  const clionApi = path.join(ide, 'plugins', 'clion', 'lib', 'modules', 'intellij.cidr.execution.jar');
+  await fs.access(clionApi);
+  const jars = [clionApi, ...(await files(path.join(ide, 'lib'))).filter(file => file.endsWith('.jar'))];
   const sources = (await files(path.join(__dirname, 'src', 'main', 'java'))).filter(file => file.endsWith('.java'));
   const registry = generatorSources();
   const generatedSource = path.join(staging, 'TemplateGenerators.java');
@@ -49,7 +51,9 @@ async function compile(ide, staging) {
     '-d', javacArgument(classes), ...sources.map(javacArgument)
   ].join('\n'));
   await exec(javaTool('javac'), ['@' + argsFile]);
-  const descriptor = await fs.readFile(path.join(__dirname, 'src', 'main', 'resources', 'META-INF', 'plugin.xml'), 'utf8');
+  const resources = path.join(__dirname, 'src', 'main', 'resources');
+  await fs.cp(resources, classes, { recursive: true });
+  const descriptor = await fs.readFile(path.join(resources, 'META-INF', 'plugin.xml'), 'utf8');
   await fs.writeFile(path.join(classes, 'META-INF', 'plugin.xml'), descriptor
     .replace('__PROJECT_WIZARD_VERSION__', version)
     .replace('    <!-- GENERATED_PROJECT_GENERATORS -->', registry.extensions));

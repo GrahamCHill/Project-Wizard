@@ -14,21 +14,21 @@ const platforms = ['win32', 'darwin', 'linux'];
 
 function generatorRegistry() {
   const supported = platforms.map(platform => new Set(templatesForPlatform(starters, platform).map(template => template.id)));
-  const generators = starters.filter(template => !builtIn.has(template.id)).map(({ id, label }) => ({
-    id, label,
+  const generators = starters.filter(template => !builtIn.has(template.id)).map(({ id, label, group }) => ({
+    id, label, group,
     platforms: platforms.filter((_platform, index) => supported[index].has(id)),
     names: [label, ...(nativeNames[id] || [])]
   }));
-  generators.push({ id: null, label: 'Custom ZIP and MonoGame Templates', platforms, names: [] });
+  generators.push({ id: null, label: 'Custom ZIP and MonoGame Templates', group: 'custom', platforms, names: [] });
   return generators;
 }
 
 function generatorSources() {
   const javaString = value => JSON.stringify(value);
   const javaList = items => `java.util.List.of(${items.map(javaString).join(', ')})`;
-  const entries = generatorRegistry().map(({ id, label, platforms, names }, index) => ({
+  const entries = generatorRegistry().map(({ id, label, group, platforms, names }, index) => ({
     source: `    public static final class Entry${index} extends ProjectWizardGenerator {
-        public Entry${index}() { super(${javaString(id)}, ${javaString(label)}, ${javaList(platforms)}, ${javaList(names)}); }
+        public Entry${index}() { super(${javaString(id)}, ${javaString(label)}, WizardGroup.${group.toUpperCase()}, ${javaList(platforms)}, ${javaList(names)}); }
     }`,
     extension: `    <directoryProjectGenerator implementation="${packageName}.TemplateGenerators$Entry${index}"/>`
   }));

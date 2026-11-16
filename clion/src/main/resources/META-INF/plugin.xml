@@ -6,7 +6,7 @@
   <description>Scaffold Raylib, SDL, and other Project Wizard templates from CLion's New Project dialog.</description>
   <idea-version since-build="262"/>
   <depends>com.intellij.modules.platform</depends>
-  <depends>com.intellij.modules.clion</depends>
+  <depends>com.intellij.clion</depends>
   <extensions defaultExtensionNs="com.intellij">
     <!-- GENERATED_PROJECT_GENERATORS -->
   </extensions>

@@ -2,6 +2,7 @@
 .github/**
 .vscode/**
 test/**
+clion/**
 package-lock.json
 **/*.log
 *.vsix

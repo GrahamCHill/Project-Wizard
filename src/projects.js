@@ -47,26 +47,48 @@ async function existingDirectory(value) {
   return fs.realpath(directory);
 }
 
-async function createProject(parentValue, name, generate, log) {
+async function lstatIfExists(file) {
+  return fs.lstat(file).catch(error => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+}
+
+async function checkProjectDirectory(directory, initial, allowedEntries) {
+  const current = await lstatIfExists(directory);
+  if (!current?.isDirectory() || current.dev !== initial.dev || current.ino !== initial.ino ||
+      (await fs.readdir(directory)).some(entry => !allowedEntries.includes(entry))) {
+    throw new Error(`The project folder must be empty: ${directory}`);
+  }
+}
+
+async function createProject(parentValue, name, generate, log, { allowedEntries } = {}) {
   validateProjectName(name);
   const parent = await existingDirectory(parentValue);
   const destination = path.join(parent, name);
-  const existing = await fs.lstat(destination).catch(error => {
-    if (error.code !== 'ENOENT') throw error;
-  });
-  if (existing) throw new Error(`A file or folder already exists at ${destination}`);
+  const existing = await lstatIfExists(destination);
+  if (existing && !allowedEntries) throw new Error(`A file or folder already exists at ${destination}`);
+  if (existing) await checkProjectDirectory(destination, existing, allowedEntries);
 
   const staging = await fs.mkdtemp(path.join(parent, '.project-wizard-'));
   try {
     const project = path.join(staging, name);
     await fs.mkdir(project);
     await generate(project, parent);
-    await fs.mkdir(destination).catch(error => {
-      if (error.code === 'EEXIST') throw new Error(`A file or folder already exists at ${destination}`);
-      throw error;
-    });
+    if (existing) await checkProjectDirectory(destination, existing, allowedEntries);
+    else {
+      await fs.mkdir(destination).catch(error => {
+        if (error.code === 'EEXIST') throw new Error(`A file or folder already exists at ${destination}`);
+        throw error;
+      });
+    }
+    const entries = await fs.readdir(project);
+    if (existing) {
+      const collisions = (await Promise.all(entries.map(entry => lstatIfExists(path.join(destination, entry)))))
+        .some(Boolean);
+      if (collisions) throw new Error(`A template file already exists in ${destination}`);
+    }
     try {
-      for (const entry of await fs.readdir(project)) {
+      for (const entry of entries) {
         await fs.cp(path.join(project, entry), path.join(destination, entry), {
           recursive: true, force: false, errorOnExist: true
         });

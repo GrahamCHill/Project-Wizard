@@ -30,9 +30,11 @@ jobs:
       - run: npm test
 
   package:
-    name: Package VSIX
+    name: Package VS Code and CLion plugins
     needs: test
     runs-on: ubuntu-latest
+    env:
+      CLION_VERSION: '2026.2.4'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -42,7 +44,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
-      - name: Package extension
+      - name: Package VS Code extension
         id: vsix
         shell: bash
         run: |
@@ -60,8 +62,40 @@ jobs:
           name: project-wizard-vsix
           path: ${{ steps.vsix.outputs.filename }}
           if-no-files-found: error
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: actions/cache@v5
+        id: clion-sdk
+        with:
+          path: |
+            ${{ runner.temp }}/clion-sdk/lib
+            ${{ runner.temp }}/clion-sdk/product-info.json
+          key: clion-sdk-${{ runner.os }}-${{ runner.arch }}-${{ env.CLION_VERSION }}
+      - name: Download the CLion SDK
+        if: steps.clion-sdk.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/clion-sdk"
+          curl --fail --location --show-error --silent --retry 3 \
+            "https://download.jetbrains.com/cpp/CLion-$CLION_VERSION.tar.gz" \
+            | tar -xz --strip-components=1 -C "$RUNNER_TEMP/clion-sdk"
+      - name: Package CLion plugin
+        id: clion
+        shell: bash
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          npm run package:clion -- --ide "$RUNNER_TEMP/clion-sdk"
+          echo "filename=project-wizard-clion-$version.zip" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: project-wizard-clion
+          path: clion/build/${{ steps.clion.outputs.filename }}
+          if-no-files-found: error
     outputs:
-      filename: ${{ steps.vsix.outputs.filename }}
+      vsix: ${{ steps.vsix.outputs.filename }}
+      clion: ${{ steps.clion.outputs.filename }}
       tag: ${{ steps.vsix.outputs.tag }}
 
   release:
@@ -85,12 +119,16 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: project-wizard-vsix
-      - name: Publish VSIX
+      - uses: actions/download-artifact@v8
+        with:
+          name: project-wizard-clion
+      - name: Publish both plugins
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VSIX: ${{ needs.package.outputs.filename }}
+          VSIX: ${{ needs.package.outputs.vsix }}
+          CLION_ZIP: ${{ needs.package.outputs.clion }}
           TAG: ${{ needs.package.outputs.tag }}
         run: |
           target=$(git rev-parse HEAD)
@@ -108,14 +146,16 @@ jobs:
               echo "The draft for $TAG targets a different commit." >&2
               exit 1
             fi
-            if jq -e --arg asset "$VSIX" 'any(.assets[]; .name == $asset and .state == "uploaded")' <<< "$release" >/dev/null; then
-              echo "$VSIX is already attached to $TAG."
-            else
-              gh release upload "$TAG" "$VSIX" --clobber
-            fi
+            for asset in "$VSIX" "$CLION_ZIP"; do
+              if jq -e --arg name "$asset" 'any(.assets[]; .name == $name and .state == "uploaded")' <<< "$release" >/dev/null; then
+                echo "$asset is already attached to $TAG."
+              else
+                gh release upload "$TAG" "$asset" --clobber
+              fi
+            done
             if jq -e '.isDraft' <<< "$release" >/dev/null; then
               gh release edit "$TAG" --draft=false
             fi
           else
-            gh release create "$TAG" "$VSIX" "${create_options[@]}" --generate-notes
+            gh release create "$TAG" "$VSIX" "$CLION_ZIP" "${create_options[@]}" --generate-notes
           fi

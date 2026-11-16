@@ -1,0 +1,13 @@
+<idea-plugin>
+  <id>com.grahamchill.project-wizard.clion</id>
+  <name>Project Wizard for CLion</name>
+  <version>__PROJECT_WIZARD_VERSION__</version>
+  <vendor url="https://github.com/GrahamCHill/Project-Wizard">Graham Hill</vendor>
+  <description>Scaffold Raylib, SDL, and other Project Wizard templates from CLion's New Project dialog.</description>
+  <idea-version since-build="262"/>
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.intellij.modules.clion</depends>
+  <extensions defaultExtensionNs="com.intellij">
+    <!-- GENERATED_PROJECT_GENERATORS -->
+  </extensions>
+</idea-plugin>

@@ -227,9 +227,13 @@ Paths and UTF-8 text files up to 1 MiB can contain `__PROJECT_NAME__`, `__PROJEC
 
 ## GitHub Actions
 
-Commit this folder to a GitHub repository with Actions enabled. The **Build Project Wizard** workflow in `.github/workflows/build.yml` runs on pushes, pull requests, and manual dispatch. It runs tests on Windows, macOS, and Linux, then packages a VSIX. Open a successful run in the **Actions** tab and download **project-wizard-vsix** from **Artifacts**.
+Commit this folder to a GitHub repository with Actions enabled. The **Build Project Wizard** workflow in `.github/workflows/build.yml` runs on pushes, pull requests, and manual dispatch. It runs tests on Windows, macOS, and Linux, then packages both plugins. Open a successful run in the **Actions** tab to download **project-wizard-vsix** and **project-wizard-clion** from **Artifacts**.
 
-To publish a new version, update `package.json` and `package-lock.json` and push the commit to the default branch. After all three test jobs pass, the workflow creates a versioned release such as `v0.5.4` and attaches the VSIX under **Assets**. Each version belongs to one commit. Bump the version to publish later changes. You can also run the workflow manually on the default branch or push a tag matching the package version.
+To publish a new version, update `package.json` and `package-lock.json` and push the commit to the default branch. After the tests and packaging pass, the workflow creates a versioned release and attaches the VS Code `.vsix` and CLion `.zip` under **Assets**. Each version belongs to one commit. Bump the version to publish later changes. You can also run the workflow manually on the default branch or push a tag matching the package version.
+
+## Project Wizard for CLion
+
+The CLion plugin adds individual starters such as **Raylib for C++** and **SDL** to the left side of CLion’s **New Project** dialog. It shares this extension’s generators and skips entries available in CLion. See the [CLion plugin guide](clion/README.md) for installation and build instructions.
 
 ## Add more starters
 

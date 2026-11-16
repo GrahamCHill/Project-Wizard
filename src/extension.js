@@ -3,21 +3,18 @@ const os = require('node:os');
 const path = require('node:path');
 const vscode = require('vscode');
 const {
-  createDotnetProject, createProject, detectFrameworks, existingDirectory,
+  createProject, detectFrameworks, existingDirectory,
   getSdk, installMonoGame, listMonoGame
 } = require('./projects');
-const { starters, writeStarter } = require('./starters');
+const { starters } = require('./starters');
 const { detectToolchains, getSetup, templateAvailability, templatesForPlatform, toolchains } = require('./toolchains');
-const { applyProjectOptions, projectOptions, readProjectOptions } = require('./project-options');
+const { projectOptions, readProjectOptions } = require('./project-options');
 const { selectPython, setupPython } = require('./python-options');
-const { createReactNativeProject } = require('./react-native');
-const { createNpmProject } = require('./npm-generators');
-const { createExternalProject } = require('./external-generators');
-const { createWailsProject } = require('./wails');
-const { extractZipTemplate, listZipTemplates } = require('./zip-templates');
+const { writeProjectFiles } = require('./generate-project');
+const { listZipTemplates } = require('./zip-templates');
 const { readCatalogSettings, enabledTemplates } = require('./catalog');
 const { catalogCache } = require('./catalog-cache');
-const { gitProjectStatus, initializeProjectGit } = require('./git-project');
+const { gitProjectStatus } = require('./git-project');
 const { projectHistory } = require('./recent-projects');
 const { executableIconFormats, loadExecutableIcons } = require('./native-app');
 
@@ -440,17 +437,8 @@ function activate(context) {
     }
     const destination = await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification, title: 'Creating project…'
-    }, () => createProject(message.location, message.name, async (project, parent) => {
-      if (template.kind === 'dotnet') await createDotnetProject(template, message.name, project, parent, log);
-      if (template.kind === 'starter') await writeStarter(template, message.name, project, parent, log, tools, options);
-      if (template.kind === 'react-native') await createReactNativeProject(message.name, project, tools, log);
-      if (template.kind === 'npm-generator') await createNpmProject(template, message.name, project, tools, log);
-      if (template.kind === 'external-generator') await createExternalProject(template, message.name, project, tools, log);
-      if (template.kind === 'wails') await createWailsProject(message.name, project, tools, options.build, log);
-      if (template.kind === 'zip') await extractZipTemplate(template.archive, project, message.name);
-      await applyProjectOptions(project, template, message.name, options, parent, log);
-      await initializeProjectGit(project, parent, tools?.git?.file, message.initializeGit, log);
-    }, log));
+    }, () => createProject(message.location, message.name, (project, parent) =>
+      writeProjectFiles(project, parent, { template, name: message.name, tools, options, initializeGit: message.initializeGit }, log), log));
 
     if (python) {
       try {

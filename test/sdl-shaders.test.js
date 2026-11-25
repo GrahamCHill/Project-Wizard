@@ -80,5 +80,5 @@ test('embeds exact GLSL bytes and aligned SPIR-V words, and rejects invalid modu
   assert.match(header, /0x07230203u/);
   assert.match(header, /0x00010000u/);
   await fs.writeFile(input, spirv.subarray(0, 7));
-  await assert.rejects(embed('SPIRV'), /not a little-endian SPIR-V module/);
+  await assert.rejects(embed('SPIRV'), /not\s+a\s+little-endian\s+SPIR-V\s+module/);
 });

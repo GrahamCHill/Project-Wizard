@@ -19,8 +19,9 @@ const { qtInterfaces, qtVersions, resolveQt } = require('./qt');
 const { mixedRenderers, resolveMixedSdl } = require('./mixed-starters');
 const { wailsVersions } = require('./wails');
 const { templateAvailability } = require('./toolchains');
+const { springOptions, readSpringOptions, configureSpring } = require('./spring');
 
-const npmTemplates = ['javascript-frontend', 'javascript-server', 'typescript-frontend', 'expo-mobile', 'electron'];
+const npmTemplates = ['javascript-frontend', 'javascript-server', 'typescript-frontend', 'typescript-express', 'expo-mobile', 'electron'];
 const npmOptions = { type: 'npm', dependencies: 'npm packages', example: '@scope/package@^1.0.0' };
 const testLabels = {
   ctest: 'CTest', gtest: 'GoogleTest', catch2: 'Catch2', pytest: 'pytest', unittest: 'unittest',
@@ -82,6 +83,10 @@ function cmakeOptions(template) {
 }
 
 function buildOptions(template, tools, versions, platform, manager) {
+  if (template.spring) return { type: 'spring', ...springOptions(template),
+    buildChoice: template.docker ? buildChoice(template.choiceLabel,
+      template.variants.map(({ id, label }) => ({ id, label, tools: template.tools, requirement: template.requirement })),
+      tools, platform, manager) : undefined };
   if (['android-views', 'ios-uikit'].includes(template.id)) return;
   if (template.sdl) {
     const languageChoice = buildChoice('Language', template.variants.map(choice => ({
@@ -146,6 +151,8 @@ function buildOptions(template, tools, versions, platform, manager) {
       ...testOptions('xunit', 'nunit') };
   }
   if (template.kind !== 'starter') return;
+  if (['go-library', 'rust-library'].includes(template.id)) return;
+  if (template.id === 'typescript-express') return npmOptions;
   if (template.cmakeTarget) {
     return { ...cmakeOptions(template),
       buildChoice: template.sfml ? buildChoice('SFML version', sfmlVersions, tools, platform, manager) : undefined,
@@ -238,6 +245,7 @@ function readProjectOptions(template, input = {}, selectedIcons, platform = proc
     return { type: config.type, tkinter: template.id === 'python-desktop', icons,
       ...parsePythonOptions(input, lines, framework, template) };
   }
+  if (config.type === 'spring') return { type: 'spring', build, framework, ...readSpringOptions(template, input) };
   if (config.type === 'java') {
     if (build === 'jdk' && lines.length) throw new Error('Choose Maven or Gradle to add Java dependencies.');
     packages = parseJavaDependencies(lines);
@@ -353,6 +361,7 @@ async function applyProjectOptions(project, template, name, options, parent, log
 }
 
 async function applyBuildOptions(project, template, name, options, parent, log) {
+  if (options.type === 'spring') return configureSpring(project, template, options);
   if (options.type === 'cmake') {
     const targets = options.targets || (template.sdl && template.webTarget ? ['native', 'emscripten'] : undefined);
     if (targets?.includes('emscripten')) await configureEmscripten(project, template, name, targets);

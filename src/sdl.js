@@ -5,8 +5,8 @@ const sdlVersions = [
 
 const sdlRenderers = [
   { id: 'default', label: 'SDL 2D (automatic)' },
-  { id: 'vulkan', label: 'Vulkan', tools: ['vulkan-dev'],
-    note: 'Use Vulkan development files 1.3.216+ and a Vulkan 1.1 driver. On macOS, install the Vulkan SDK with MoltenVK and load its setup-env.sh.' },
+  { id: 'vulkan', label: 'Vulkan', tools: ['vulkan-dev', 'vulkan-shader-compiler'],
+    note: 'Use Vulkan development files 1.3.216+, glslc or glslangValidator, and a Vulkan 1.1 driver. On macOS, install the Vulkan SDK with MoltenVK and load its setup-env.sh.' },
   { id: 'opengl', label: 'OpenGL', platformTools: { linux: ['opengl-dev'] },
     note: 'This example requests an OpenGL 3.3 core context.' },
   { id: 'dx11', label: 'DirectX 11', driver: 'direct3d11', platforms: ['win32'], tools: ['windows-directx-sdk'],
@@ -39,9 +39,18 @@ function resolveSdl(template, options) {
     'This project uses SDL ' + version.version + ' with ' + renderer.label + '.',
     'CMake fetches SDL during the first configuration. On Linux, install the SDL development prerequisites for your distribution.',
     renderer.note,
+    ['opengl', 'vulkan'].includes(renderer.id) ?
+      'The app draws a colored triangle using shaders/triangle.vert and shaders/triangle.frag. Edit these files and rebuild. ' +
+      (renderer.id === 'vulkan' ? 'CMake compiles GLSL to SPIR-V with glslc (or glslangValidator) and embeds it in the executable.' :
+        'CMake embeds the GLSL sources; the OpenGL driver compiles and links them at startup. Compilation errors are printed to stderr.') +
+      ' No external shader files are needed at runtime or in the distribution package.' : undefined,
     'Run app from build/ or build/Debug/, or open the .app bundle on macOS.'
   ].filter(Boolean).join(' ');
-  return { ...template, language, sourceDirectory, note, renderer, webTarget: renderer.id === 'default' };
+  const shaderFiles = ['shaders/triangle.vert', 'shaders/triangle.frag'];
+  return { ...template, language, sourceDirectory, note, renderer, webTarget: renderer.id === 'default',
+    files: [...new Set([...template.files, ...(['opengl', 'vulkan'].includes(renderer.id) ? shaderFiles : [])])],
+    sharedFiles: { ...template.sharedFiles, ...(['opengl', 'vulkan'].includes(renderer.id) ?
+      { 'shaders/EmbedShader.cmake': 'cmake/EmbedShader.cmake' } : {}) } };
 }
 
 function renderSdl(source, { version, major }, renderer) {

@@ -37,7 +37,8 @@ function parsePythonOptions(input, lines, framework, template = {}) {
     packages.set(name, line);
   }
   const pytest = framework === 'pytest' && !packages.has('pytest') ? (version.startsWith('3.8') ? 'pytest<8.4' : 'pytest') : undefined;
-  return { environment: environment.id, version, packages: [...packages.values()], pytest, framework };
+  return { environment: environment.id, version, packages: [...packages.values()], pytest, framework,
+    editableProject: template.pythonPackage === true };
 }
 
 function selectPython(options, tools, versions, template) {
@@ -60,20 +61,31 @@ async function preparePython(project, template, name, options) {
   const readme = ['# ' + name, '', template.description, ''];
   const setup = [];
   let runner;
+  let packageManifest;
+  if (template.pythonPackage) {
+    const manifest = path.join(project, 'pyproject.toml');
+    packageManifest = (await fs.readFile(manifest, 'utf8'))
+      .replace('dependencies = []', 'dependencies = [' + packages.map(value => JSON.stringify(value)).join(', ') + ']');
+    await fs.writeFile(manifest, packageManifest);
+  }
 
   if (environment === 'uv') {
     const dependencies = packages.map(value => JSON.stringify(value)).join(', ');
     const toml = ['[project]', 'name = ' + JSON.stringify(replaceTokens('__PROJECT_SLUG__', name)),
       'version = "0.1.0"', 'requires-python = ">=' + minimum + '"', 'dependencies = [' + dependencies + ']', ''];
     if (pytest) toml.push('[dependency-groups]', 'dev = [' + JSON.stringify(pytest) + ']', '');
-    await fs.writeFile(path.join(project, 'pyproject.toml'), toml.join('\n'), { flag: 'wx' });
+    if (packageManifest) {
+      await fs.writeFile(path.join(project, 'pyproject.toml'), packageManifest +
+        (pytest ? '\n[dependency-groups]\ndev = [' + JSON.stringify(pytest) + ']\n' : ''));
+    } else await fs.writeFile(path.join(project, 'pyproject.toml'), toml.join('\n'), { flag: 'wx' });
     if (version) await fs.writeFile(path.join(project, '.python-version'), version + '\n', { flag: 'wx' });
     setup.push('uv sync');
     runner = 'uv run python';
   } else if (environment === 'conda') {
     const yaml = ['channels:', '  - conda-forge', '  - nodefaults', 'dependencies:', '  - python' + (version ? '=' + version : '>=' + minimum)];
     if (template.id === 'python-desktop') yaml.push('  - tk');
-    if (requirements.length) yaml.push('  - pip', '  - pip:', ...requirements.map(requirement => '    - ' + JSON.stringify(requirement)));
+    if (requirements.length || template.pythonPackage) yaml.push('  - pip');
+    if (requirements.length) yaml.push('  - pip:', ...requirements.map(requirement => '    - ' + JSON.stringify(requirement)));
     await fs.writeFile(path.join(project, 'environment.yml'), yaml.join('\n') + '\n', { flag: 'wx' });
     setup.push('conda env create --prefix ./.venv --file environment.yml');
     runner = 'conda run --prefix ./.venv python';
@@ -91,12 +103,13 @@ async function preparePython(project, template, name, options) {
     readme.push('On Windows, use py -' + (minorVersion || '3') + ' in place of python' + (minorVersion || '3') + ', or use the path to your Python executable.', '');
   }
 
+  if (template.pythonPackage && environment !== 'uv') setup.push(runner + ' -m pip install -e .');
   if (setup.length) readme.push('## Set up', '', '~~~sh', ...setup, '~~~', '');
   readme.push('## Run', '', '~~~sh', ...template.commands.map(command => command.replace(/^python3\b/, runner)), '~~~', '');
   if (template.id === 'python-server') readme.push('Open http://127.0.0.1:8080 after starting the development server.', '');
   if (template.pythonMinimum && template.note) readme.push(template.note, '');
   if (framework) {
-    await fs.mkdir(path.join(project, 'tests'));
+    await fs.mkdir(path.join(project, 'tests'), { recursive: true });
     const sample = 'def add(left: int, right: int) -> int:\n    return left + right\n';
     let source = framework === 'pytest' ? sample + '\n\ndef test_add():\n    assert add(2, 3) == 5\n' :
       'import unittest\n\n\n' + sample + '\n\nclass ExampleTest(unittest.TestCase):\n    def test_add(self):\n        self.assertEqual(add(2, 3), 5)\n';
@@ -156,6 +169,7 @@ async function setupPython(project, options, runtime, log) {
   if (!(await fs.stat(interpreter).catch(() => undefined))?.isFile()) {
     throw new Error('The environment manager did not create a Python interpreter inside .venv.');
   }
+  if (options.editableProject && environment !== 'uv') await run(interpreter, ['-m', 'pip', 'install', '-e', '.']);
   if (options.tkinter) await run(interpreter, ['-I', '-c', 'import tkinter']);
 }
 

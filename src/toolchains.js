@@ -74,7 +74,7 @@ const toolchains = {
   ...Object.fromEntries(wailsVersions.map(({ id, label, cli, git, version }) => {
     const install = 'go install ' + git + '@v' + version;
     return [id, {
-      label: label + ' CLI', url: id === 'wails3' ? 'https://v3.wails.io/getting-started/installation/' : 'https://wails.io/docs/gettingstarted/installation/',
+      label: label + ' CLI', url: id === 'wails3' ? 'https://v3.wails.io/getting-started/installation/' : 'https://v2.wails.io/docs/gettingstarted/installation/',
       instructions: 'In a terminal, run `' + install + '`. Add the Go binary directory for `' + cli + '` to PATH for use in the generated project.',
       windows: install, macos: install, linux: install
     }];
@@ -88,7 +88,7 @@ const toolchains = {
     instructions: 'Install Xcode Command Line Tools with xcode-select --install.'
   },
   'wails2-linux': {
-    label: 'GTK 3 and WebKitGTK 4.1', url: 'https://wails.io/docs/gettingstarted/installation/',
+    label: 'GTK 3 and WebKitGTK 4.1', url: 'https://v2.wails.io/docs/gettingstarted/installation/',
     instructions: 'Install a C compiler, pkg-config, GTK 3 and WebKitGTK 4.1 development packages. Build with -tags webkit2_41.'
   },
   'wails3-linux': {
@@ -433,6 +433,10 @@ const toolchains = {
       darwin: 'Install the Vulkan SDK with MoltenVK. Set up the SDK environment for VS Code and your build shell.',
       linux: 'Install your distribution’s Vulkan loader development package and a Vulkan driver, or install and activate the Vulkan SDK.'
     }
+  },
+  'vulkan-shader-compiler': {
+    label: 'Vulkan GLSL compiler', url: 'https://vulkan.lunarg.com/sdk/home',
+    instructions: 'Install glslc or glslangValidator, included in the Vulkan SDK. Put it on PATH or set VULKAN_SDK. On Linux, install glslc or glslang-tools from your distribution.'
   },
   cuda: {
     label: 'NVIDIA CUDA Toolkit', url: 'https://developer.nvidia.com/cuda-downloads',
@@ -1055,7 +1059,7 @@ async function detectToolchains(settings = system) {
     platform === 'linux' ? findKernelHeaders(env, os.release()) : undefined
   ]);
   const [python, rustc, cargo, go, swift, javac, kotlin, zig, nodeTools, cmake, compiler, cpp, cuda, qt, manager,
-    [git, ruby, bundler, php, lua, love, gradle, maven, emscripten, android, nasm, make, kernelHeaders], vulkanSdk] = await Promise.all([
+    [git, ruby, bundler, php, lua, love, gradle, maven, emscripten, android, nasm, make, kernelHeaders], vulkanSdk, vulkanCompiler] = await Promise.all([
     findPythonTools(settings, search, appleSdk),
     probe(['rustc'], ['--version'], /rustc (\d+\.\d+\.\d+)/, rustHome),
     probe(['cargo'], ['--version'], /cargo (\d+\.\d+\.\d+)/, rustHome),
@@ -1072,7 +1076,9 @@ async function detectToolchains(settings = system) {
     findQt(settings, common),
     findPackageManager(common, platform),
     additionalTools,
-    findVulkanSdk(settings)
+    findVulkanSdk(settings),
+    candidates(['glslc', 'glslangValidator'], directories(env.VULKAN_SDK && path.join(env.VULKAN_SDK, 'Bin'),
+      env.VULKAN_SDK && path.join(env.VULKAN_SDK, 'bin')), platform)
   ]);
   const javaRuntime = javac && await detectExecutable(['java'], ['-version'], /version "(\d+(?:\.\d+)*)/, [path.dirname(javac.file), ...javaDirs], settings, file => mac && file === '/usr/bin/java');
   const emcmake = emscripten && (await candidates(['emcmake'], directories(path.dirname(emscripten.file)), platform))[0];
@@ -1161,6 +1167,7 @@ async function detectToolchains(settings = system) {
     'sfml2-desktop': sfml,
     'opengl-dev': gl,
     'vulkan-dev': requireVersion(vulkanSdk || (!windows ? await pkgConfig('vulkan') : undefined), 1, 3, 216),
+    'vulkan-shader-compiler': vulkanCompiler[0] ? { version: 'GLSL to SPIR-V', file: vulkanCompiler[0] } : undefined,
     cuda,
     ...qt,
     ...editors,

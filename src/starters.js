@@ -11,6 +11,7 @@ const { renderSdl, resolveSdl, sdlStarter, sdlVersion } = require('./sdl');
 const { qtStarter, renderQt, resolveQt } = require('./qt');
 const { wailsStarter } = require('./wails');
 const { dockerStarters, resolveDockerStarter } = require('./docker-starters');
+const { springStarters, renderSpring } = require('./spring');
 
 const sfmlStarter = {
   group: 'graphics', kind: 'starter', language: 'C++', cmakeTarget: 'app',
@@ -67,6 +68,21 @@ const starters = [
     requirement: '.NET SDK 8 or newer.', next: 'Run dotnet run from the project folder.'
   },
   {
+    id: 'dotnet-library', group: 'general', kind: 'dotnet', label: 'C# Class Library',
+    language: 'C#', shortName: 'classlib', needsSdk: true, tools: ['dotnet'],
+    description: 'A reusable C# library that builds and packs as a NuGet package.',
+    requirement: '.NET SDK 8 or newer.', next: 'Build the library or pack it using README.md.',
+    runCommands: ['dotnet build', 'dotnet pack --output artifacts'],
+    note: 'Add your public API to Class1.cs. Set package metadata in the project file before distributing the NuGet package.'
+  },
+  {
+    id: 'dotnet-worker', group: 'cli', kind: 'dotnet', label: 'C# Worker Service',
+    language: 'C#', shortName: 'worker', needsSdk: true, tools: ['dotnet'],
+    description: 'A .NET background worker with dependency injection, logging, and cancellation.',
+    requirement: '.NET SDK 8 or newer.', next: 'Run dotnet run from the project folder.',
+    runCommands: ['dotnet run'], note: 'Put recurring work in Worker.ExecuteAsync and observe its cancellation token. Press Ctrl+C to stop.'
+  },
+  {
     id: 'dotnet-winforms', group: 'desktop', kind: 'dotnet', label: '.NET Windows Forms Desktop',
     language: 'C#', shortName: 'winforms', needsSdk: true, tools: ['dotnet'], platforms: ['win32'],
     description: 'A native Windows desktop application using Windows Forms.',
@@ -86,6 +102,7 @@ const starters = [
   ...pluginStarters,
   ...systemsStarters,
   ...dockerStarters,
+  ...springStarters,
   ...standardTemplates,
   ...generators,
   ...externalGenerators,
@@ -107,7 +124,7 @@ async function writeStarter(template, name, project, parent, log, tools = {}, op
   const templateRoot = path.join(__dirname, '..', 'templates', sourceDirectory);
   const cpp = template.language === 'C++';
   const moduleName = 'Game' + name.replace(/[^A-Za-z0-9]/g, '').slice(0, 48);
-  const renderTokens = text => replaceTokens(template.sfml ? renderSfml(text, options.build) : template.qt ? renderQt(text, template) : text, name, sdk?.major)
+  const renderTokens = text => replaceTokens(renderSpring(template.sfml ? renderSfml(text, options.build) : template.qt ? renderQt(text, template) : text, template), name, sdk?.major)
     .replaceAll('__UNITY_VERSION__', tools['unity-editor']?.editorVersion || '6000.3.0f1')
     .replaceAll('__UNREAL_ASSOCIATION__', tools['unreal-editor']?.association || '')
     .replaceAll('__UNREAL_MODULE__', moduleName)

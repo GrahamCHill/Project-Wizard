@@ -21,7 +21,7 @@ const wailsVersions = [
 const wailsStarter = {
   id: 'wails', kind: 'wails', group: 'desktop', language: 'Go', label: 'Wails Desktop',
   platforms: ['win32', 'darwin', 'linux'],
-  description: 'A native webview app with a Go backend and a Vite frontend that calls a Go greeting method.',
+  description: 'A Wails 2 or Wails 3 desktop app with a Go backend and a Vite frontend that calls Go methods.',
   next: 'Follow the development and packaging commands in README.md.'
 };
 
@@ -84,8 +84,15 @@ async function createWailsProject(name, project, tools, build, log) {
       ['Run `wails build` to package for the current platform. On Linux use `wails build -tags webkit2_41`. Outputs go under `build/bin/`.']),
     'On macOS, share the complete `.app` bundle. Linux users need the matching system webview libraries.', ''
   ].join('\n'));
-  for (const entry of entries) await fs.rename(path.join(output, entry), path.join(project, entry));
-  await fs.rmdir(output);
+  const generated = await fs.realpath(output);
+  if (path.dirname(generated) !== await fs.realpath(project)) {
+    throw new Error('The Wails generator wrote outside the project staging folder.');
+  }
+  // Copy first: Windows can reject renaming directories produced by the generator.
+  for (const entry of entries) await fs.cp(path.join(generated, entry), path.join(project, entry), {
+    recursive: true, force: false, errorOnExist: true
+  });
+  await fs.rm(generated, { recursive: true, force: true });
 }
 
 module.exports = { createWailsProject, wailsStarter, wailsVersions };

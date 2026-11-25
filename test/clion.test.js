@@ -54,13 +54,16 @@ test('CLion loads CMake template options without launching toolchain probes', as
       '#!/bin/sh\necho probed >> "$PROJECT_WIZARD_PROBE_LOG"\n', { mode: 0o755 });
   }
   const env = { ...process.env, PATH: tools, PROJECT_WIZARD_PROBE_LOG: marker };
-  for (const templateId of ['raylib-cpp', 'sdl', 'docker-python']) {
+  for (const templateId of ['raylib-cpp', 'sdl', 'docker-python', 'docker-spring', 'spring-web-kotlin']) {
     const catalog = await requestBridge({ action: 'catalog', templateId }, env);
     assert.equal(catalog.error, undefined);
     assert.deepEqual(catalog.templates.map(template => template.id), [templateId]);
     assert.equal(catalog.canRefresh, false);
     if (templateId === 'raylib-cpp') {
       assert.equal(catalog.templates[0].options.targetChoice.defaultId, 'native');
+    }
+    if (templateId === 'docker-spring' || templateId === 'spring-web-kotlin') {
+      assert.ok(catalog.templates[0].options.spring.plugins.some(plugin => plugin.id === 'security'));
     }
   }
   await assert.rejects(fs.access(marker), { code: 'ENOENT' });

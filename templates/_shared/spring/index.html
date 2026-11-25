@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spring Boot App</title>
+  <style>
+    body { font: 18px system-ui, sans-serif; max-width: 44rem; margin: 12vh auto; padding: 0 1.5rem; color: #203040; }
+    h1 { color: #357c37; }
+    input, button { font: inherit; padding: .5rem; }
+  </style>
+</head>
+<body>
+  <h1 th:text="'Hello, ' + ${name} + '!'">Hello, world!</h1>
+  <p>Your Spring Boot and Thymeleaf app is running.</p>
+  <form action="/" method="get">
+    <label for="name">Your name</label>
+    <input id="name" name="name" th:value="${name}">
+    <button type="submit">Say hello</button>
+  </form>
+</body>
+</html>

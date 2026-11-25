@@ -7,6 +7,17 @@ const { replaceTokens } = require('./projects');
 const exec = promisify(execFile);
 
 const generators = [
+  ...[
+    ['react', 'React', 'src/App.tsx'],
+    ['vue', 'Vue', 'src/App.vue'],
+    ['svelte', 'Svelte', 'src/App.svelte']
+  ].map(([framework, label, expected]) => ({
+    id: framework + '-frontend', label: label + ' TypeScript Frontend', group: 'frontend', generatorNode: 'vite-node',
+    description: 'A ' + label + ' application with TypeScript, Vite, and a production build.',
+    requirement: 'Node.js 20.19+ (20.x) or 22.12+, and npm.', cli: 'create-vite@9.3.4',
+    args: ['--template', framework + '-ts', '--no-interactive', '--no-immediate'],
+    expected, runCommands: ['npm install', 'npm run dev']
+  })),
   {
     id: 'nextjs', label: 'Next.js', group: 'frontend', generatorNode: 'next-node',
     description: 'A TypeScript React app with the Next.js App Router and ESLint.',

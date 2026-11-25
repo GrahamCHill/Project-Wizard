@@ -13,6 +13,7 @@ function starter(id, group, language, label, description, tools, files, commands
     pythonMinimum: options.pythonMinimum,
     pythonPackages: options.pythonPackages,
     pythonTestPackages: options.pythonTestPackages,
+    pythonPackage: options.pythonPackage,
     webTarget: options.webTarget,
     androidCmake: options.androidCmake,
     next: 'Follow the run commands in README.md.'
@@ -53,6 +54,26 @@ function raylibVr(language) {
 }
 
 const standardTemplates = [
+  starter('python-package', 'general', 'Python', 'Python Package and CLI',
+    'An installable Python package with a src layout, console entry point, and tests for its public API.',
+    ['ml-python'], ['pyproject.toml', 'src/starter_package/__init__.py', 'src/starter_package/__main__.py',
+      'src/starter_package/cli.py', 'tests/test_package.py', 'gitignore'], ['python3 -m starter_package Ada'],
+    { pythonMinimum: '3.11', pythonPackage: true,
+      note: 'The environment setup installs this package in editable mode. Run `python -m unittest discover -s tests` to test the public API. Build a wheel with `python -m pip wheel --no-deps . --wheel-dir dist` (with uv: `uv build`). Rename starter_package when choosing your import namespace.' }),
+  starter('go-library', 'general', 'Go', 'Go Library',
+    'A reusable Go module with an exported API, table-driven tests, and an executable documentation example.',
+    ['go'], ['go.mod', 'greeting.go', 'greeting_test.go', 'gitignore'], ['go test ./...', 'go vet ./...'],
+    { note: 'Replace the example.com module path in go.mod before publishing. Import the module from another Go application to use Greet.' }),
+  starter('rust-library', 'general', 'Rust', 'Rust Cargo Library',
+    'A reusable Rust crate with a documented public API, unit tests, and a runnable example.',
+    ['rust'], ['Cargo.toml', 'src/lib.rs', 'examples/greet.rs', 'gitignore'], ['cargo test', 'cargo run --example greet'],
+    { note: 'Run `cargo doc --open` to browse the API documentation. Add license, authors, and repository metadata to Cargo.toml before publishing.' }),
+  starter('typescript-express', 'server', 'TypeScript', 'TypeScript Express API',
+    'An Express 5 JSON API with typed routes, a health check, input validation, and a production build.',
+    ['vite-node', 'npm'], ['package.json', 'tsconfig.json', 'src/app.ts', 'src/server.ts', 'tests/api.mjs', 'gitignore'],
+    ['npm install', 'npm run dev'],
+    { requirement: 'Node.js 20.19+ (20.x) or 22.12+, and npm.',
+      note: 'Open http://127.0.0.1:8080/hello or /healthz. Run `npm test` to build and test the HTTP routes, and `npm run build` followed by `npm start` for the compiled app. Set HOST and PORT to change its loopback address.' }),
   starter('terraform-infrastructure', 'infrastructure', 'Terraform', 'Terraform Infrastructure',
     'An environment-based Terraform layout with separate bootstrap roots and reusable networking and ingestion modules.',
     ['terraform'], [

@@ -30,7 +30,7 @@ const dockerStarters = [
     }),
   dockerStarter('spring', 'Spring Boot Backend', undefined,
     'A Maven-built Spring Boot JSON API in Java or Kotlin.', {
-      choiceLabel: 'Spring Boot language', sharedFiles: { ...apiFiles, 'docker/Dockerfile.spring': 'Dockerfile' }, files: [],
+      spring: true, choiceLabel: 'Spring Boot language', sharedFiles: { ...apiFiles, 'docker/Dockerfile.spring': 'Dockerfile' }, files: [],
       variants: [
         variant('java', 'Java', 'docker-spring/java', ['pom.xml', 'src/main/java/example/app/Application.java'], 'Java'),
         variant('kotlin', 'Kotlin', 'docker-spring/kotlin', ['pom.xml', 'src/main/kotlin/example/app/Application.kt'], 'Kotlin')

@@ -9,6 +9,8 @@
 #include <SDL_vulkan.h>
 #endif
 #include "starter.h"
+#include "triangle_vert.h"
+#include "triangle_frag.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -34,6 +36,8 @@ typedef struct VulkanApp {
     VkSwapchainKHR swapchain;
     VkExtent2D extent;
     VkRenderPass renderPass;
+    VkPipelineLayout pipelineLayout;
+    VkPipeline pipeline;
     uint32_t imageCount;
     SwapImage *images;
 } VulkanApp;
@@ -213,6 +217,8 @@ static int createDevice(VulkanApp *app)
 
 static void destroySwapchain(VulkanApp *app)
 {
+    if (app->pipeline) vkDestroyPipeline(app->device, app->pipeline, NULL);
+    if (app->pipelineLayout) vkDestroyPipelineLayout(app->device, app->pipelineLayout, NULL);
     for (uint32_t i = 0; i < app->imageCount && app->images; ++i) {
         const SwapImage *image = &app->images[i];
         if (image->framebuffer) vkDestroyFramebuffer(app->device, image->framebuffer, NULL);
@@ -225,6 +231,8 @@ static void destroySwapchain(VulkanApp *app)
     app->images = NULL;
     app->imageCount = 0;
     app->renderPass = VK_NULL_HANDLE;
+    app->pipeline = VK_NULL_HANDLE;
+    app->pipelineLayout = VK_NULL_HANDLE;
     app->swapchain = VK_NULL_HANDLE;
 }
 
@@ -315,6 +323,77 @@ static int createSwapImages(VulkanApp *app, VkFormat format)
     return complete;
 }
 
+static int createPipeline(VulkanApp *app)
+{
+    VkShaderModule vertex = VK_NULL_HANDLE;
+    VkShaderModule fragment = VK_NULL_HANDLE;
+    VkShaderModuleCreateInfo module = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+    module.codeSize = sizeof(triangle_vert);
+    module.pCode = triangle_vert;
+    if (!VK_OK(vkCreateShaderModule(app->device, &module, NULL, &vertex))) return 0;
+    module.codeSize = sizeof(triangle_frag);
+    module.pCode = triangle_frag;
+    if (!VK_OK(vkCreateShaderModule(app->device, &module, NULL, &fragment))) {
+        vkDestroyShaderModule(app->device, vertex, NULL);
+        return 0;
+    }
+
+    VkPipelineShaderStageCreateInfo stages[] = {
+        { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO },
+        { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO }
+    };
+    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].module = vertex;
+    stages[0].pName = "main";
+    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].module = fragment;
+    stages[1].pName = "main";
+    // gl_VertexIndex in the vertex shader supplies the triangle, so there are no vertex bindings.
+    VkPipelineVertexInputStateCreateInfo input = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+    VkPipelineInputAssemblyStateCreateInfo assembly = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+    assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    VkPipelineViewportStateCreateInfo viewport = { VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+    viewport.viewportCount = 1;
+    viewport.scissorCount = 1;
+    VkPipelineRasterizationStateCreateInfo raster = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.cullMode = VK_CULL_MODE_NONE;
+    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster.lineWidth = 1.0f;
+    VkPipelineMultisampleStateCreateInfo sampling = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+    sampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineColorBlendAttachmentState attachment = { 0 };
+    attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    VkPipelineColorBlendStateCreateInfo blend = { VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+    blend.attachmentCount = 1;
+    blend.pAttachments = &attachment;
+    const VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    VkPipelineDynamicStateCreateInfo dynamic = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+    dynamic.dynamicStateCount = 2;
+    dynamic.pDynamicStates = dynamicStates;
+    VkPipelineLayoutCreateInfo layout = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+    int complete = VK_OK(vkCreatePipelineLayout(app->device, &layout, NULL, &app->pipelineLayout));
+    if (complete) {
+        VkGraphicsPipelineCreateInfo pipeline = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+        pipeline.stageCount = 2;
+        pipeline.pStages = stages;
+        pipeline.pVertexInputState = &input;
+        pipeline.pInputAssemblyState = &assembly;
+        pipeline.pViewportState = &viewport;
+        pipeline.pRasterizationState = &raster;
+        pipeline.pMultisampleState = &sampling;
+        pipeline.pColorBlendState = &blend;
+        pipeline.pDynamicState = &dynamic;
+        pipeline.layout = app->pipelineLayout;
+        pipeline.renderPass = app->renderPass;
+        complete = VK_OK(vkCreateGraphicsPipelines(app->device, VK_NULL_HANDLE, 1, &pipeline, NULL, &app->pipeline));
+    }
+    vkDestroyShaderModule(app->device, fragment, NULL);
+    vkDestroyShaderModule(app->device, vertex, NULL);
+    return complete;
+}
+
 static uint32_t clampExtent(uint32_t value, uint32_t minimum, uint32_t maximum)
 {
     if (value < minimum) return minimum;
@@ -371,10 +450,10 @@ static int rebuildSwapchain(VulkanApp *app, int width, int height)
     info.presentMode = VK_PRESENT_MODE_FIFO_KHR;
     info.clipped = VK_TRUE;
     return VK_OK(vkCreateSwapchainKHR(app->device, &info, NULL, &app->swapchain)) &&
-        createRenderPass(app, format.format) && createSwapImages(app, format.format);
+        createRenderPass(app, format.format) && createPipeline(app) && createSwapImages(app, format.format);
 }
 
-static int recordClear(const VulkanApp *app, uint32_t index)
+static int recordTriangle(const VulkanApp *app, uint32_t index)
 {
     VkCommandBufferBeginInfo begin = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
     begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -393,6 +472,15 @@ static int recordClear(const VulkanApp *app, uint32_t index)
     pass.clearValueCount = 1;
     pass.pClearValues = &color;
     vkCmdBeginRenderPass(app->commands, &pass, VK_SUBPASS_CONTENTS_INLINE);
+    VkViewport viewport = { 0 };
+    viewport.width = (float)app->extent.width;
+    viewport.height = (float)app->extent.height;
+    viewport.maxDepth = 1.0f;
+    VkRect2D scissor = { { 0, 0 }, app->extent };
+    vkCmdSetViewport(app->commands, 0, 1, &viewport);
+    vkCmdSetScissor(app->commands, 0, 1, &scissor);
+    vkCmdBindPipeline(app->commands, VK_PIPELINE_BIND_POINT_GRAPHICS, app->pipeline);
+    vkCmdDraw(app->commands, 3, 1, 0, 0);
     vkCmdEndRenderPass(app->commands);
     return VK_OK(vkEndCommandBuffer(app->commands));
 }
@@ -407,7 +495,7 @@ static FrameResult drawFrame(const VulkanApp *app)
         app->imageAvailable, VK_NULL_HANDLE, &index);
     if (acquired == VK_ERROR_OUT_OF_DATE_KHR) return FRAME_RESIZE;
     if (acquired != VK_SUBOPTIMAL_KHR && !vkOk(acquired, "vkAcquireNextImageKHR")) return FRAME_FAILED;
-    if (!recordClear(app, index) || !VK_OK(vkResetFences(app->device, 1, &app->frameFinished))) return FRAME_FAILED;
+    if (!recordTriangle(app, index) || !VK_OK(vkResetFences(app->device, 1, &app->frameFinished))) return FRAME_FAILED;
 
     // Reacquiring this image also releases its previous presentation semaphore.
     const VkSemaphore ready = app->images[index].readyToPresent;

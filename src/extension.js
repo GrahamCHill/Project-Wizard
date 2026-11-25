@@ -184,6 +184,10 @@ function wizardHtml(webview, extensionUri) {
                 <label id="build-choice-label" for="build-choice"></label>
                 <select id="build-choice"></select>
               </div>
+              <div id="spring-options" hidden>
+                <button id="choose-spring-plugins" type="button" class="secondary">Choose Spring plugins…</button>
+                <p id="spring-summary" class="option-hint" role="status"></p>
+              </div>
               <fieldset id="target-choice-field" hidden>
                 <legend id="target-choice-label"></legend>
                 <div id="target-choices"></div>
@@ -240,6 +244,20 @@ function wizardHtml(webview, extensionUri) {
       <p id="recent-error" class="error" role="alert" hidden></p>
     </section>
   </main>
+  <dialog id="spring-plugins" aria-labelledby="spring-heading">
+    <form id="spring-form">
+      <h2 id="spring-heading">Spring plugins</h2>
+      <p>Choose Spring Boot starters and development tools to include in your project.</p>
+      <div id="spring-plugin-choices"></div>
+      <label for="spring-database">SQL database</label>
+      <select id="spring-database"></select>
+      <p class="option-hint">Selecting a database adds JDBC when needed. JPA and JDBC use H2 by default. External databases require connection settings.</p>
+      <div class="actions">
+        <button id="cancel-spring" type="button" class="secondary">Cancel</button>
+        <button type="submit">Apply plugins</button>
+      </div>
+    </form>
+  </dialog>
   <dialog id="catalog-settings" aria-labelledby="settings-heading">
     <form id="settings-form">
       <h2 id="settings-heading">Project Wizard settings</h2>

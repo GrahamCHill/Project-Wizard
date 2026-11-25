@@ -208,6 +208,17 @@ async function createDotnetProject(template, name, project, parent, log) {
   if (/^\s+--allow-scripts\b/m.test(help)) args.push('--allow-scripts', 'no');
   await runDotnet(sdk.executable, args, parent, log, 180000);
   await removeStagedRestoreCaches(project);
+  if (template.shortName === 'classlib' && template.language === 'C#') {
+    const manifest = path.join(project, name + '.csproj');
+    const source = await fs.readFile(manifest, 'utf8');
+    await fs.writeFile(manifest, source.replace('<PropertyGroup>',
+      '<PropertyGroup>\n    <PackageId>app-' + replaceTokens('__PROJECT_SLUG__', name) + '</PackageId>'));
+  }
+  if (template.runCommands) {
+    await fs.writeFile(path.join(project, 'README.md'),
+      ['# ' + name, '', template.description, '', '```sh', ...template.runCommands, '```', '', template.note || '', ''].join('\n'),
+      { flag: 'wx' });
+  }
 }
 
 function detectFrameworks(filename, contents) {

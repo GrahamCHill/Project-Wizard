@@ -757,7 +757,7 @@ test('offers both SDL versions and all compatible renderers from one project ent
   assert.equal(windows.buildChoice.defaultId, 'sdl3');
   assert.deepEqual(windows.buildChoice.options.map(option => option.id), ['sdl3', 'sdl2']);
   assert.deepEqual(windows.rendererChoice.options.map(option => option.id), ['default', 'vulkan', 'opengl', 'dx11', 'dx12']);
-  assert.deepEqual(windows.rendererChoice.options.find(option => option.id === 'vulkan').missing.map(tool => tool.id), ['vulkan-dev']);
+  assert.deepEqual(windows.rendererChoice.options.find(option => option.id === 'vulkan').missing.map(tool => tool.id), ['vulkan-dev', 'vulkan-shader-compiler']);
   for (const platform of ['darwin', 'linux']) {
     assert.deepEqual(projectOptions(template, tools, [], platform).rendererChoice.options.map(option => option.id), ['default', 'vulkan', 'opengl']);
     assert.throws(() => readProjectOptions(template, { renderer: 'dx12' }, undefined, platform), /supported renderer/);

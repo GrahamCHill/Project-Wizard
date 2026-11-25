@@ -21,6 +21,7 @@ const testFramework = byId('test-framework');
 const errorMessage = byId('error');
 const operation = byId('operation');
 const settingsDialog = byId('catalog-settings');
+const springDialog = byId('spring-plugins');
 const settingsSearch = byId('settings-search');
 const settingsLanguages = byId('settings-languages');
 const settingsTemplates = byId('settings-templates');
@@ -48,6 +49,8 @@ let gitStatus;
 let gitOverride;
 let gitRequest = 0;
 let gitTimer;
+let springSelection = [];
+let springDatabase = 'auto';
 
 function searchText(value) {
   return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
@@ -280,6 +283,7 @@ function renderProjectOptions(template, refreshChoices = false) {
   const preserve = optionTemplate?.id === template?.id;
   optionTemplate = template;
   const options = template?.options;
+  byId('spring-options').hidden = !options?.spring;
   if (!options) return;
   if (!preserve) {
     projectSetup.open = true;
@@ -287,7 +291,10 @@ function renderProjectOptions(template, refreshChoices = false) {
     byId('testing').checked = false;
     executableIcon.checked = false;
     pythonVersion.value = '';
+    springSelection = [...(options.spring?.includedPlugins || [])];
+    springDatabase = 'auto';
   }
+  updateSpringSummary();
   byId('renderer-choice-label').textContent = options.rendererChoice?.label || '';
   showChoice(rendererChoiceSelect, 'renderer-choice-field', options.rendererChoice, preserve ? rendererChoiceSelect.value : '');
   showChoice(projectLanguageSelect, 'language-choice-field', options.languageChoice, preserve ? projectLanguageSelect.value : '');
@@ -329,9 +336,37 @@ function selectedOptions() {
     environment: environmentSelect.value,
     pythonVersion: pythonVersion.value,
     testing: byId('testing').checked,
+    springPlugins: optionTemplate.options.spring ? springSelection : undefined,
+    springDatabase: optionTemplate.options.spring ? springDatabase : undefined,
     framework: testFramework.value,
     dependencies: byId('dependency-options').hidden ? '' : byId('dependencies').value
   };
+}
+
+function updateSpringSummary() {
+  const config = optionTemplate?.options?.spring;
+  if (!config) return;
+  const labels = config.plugins.filter(plugin => springSelection.includes(plugin.id)).map(plugin => plugin.label);
+  const database = config.databases.find(database => database.id === springDatabase);
+  byId('spring-summary').textContent = (labels.join(', ') || 'Core starter only') +
+    (springDatabase !== 'auto' ? ' · ' + database.label : '') + '.';
+}
+
+function openSpringPlugins() {
+  const config = optionTemplate?.options?.spring;
+  if (!config || pending) return;
+  byId('spring-plugin-choices').replaceChildren(...config.plugins.map(plugin => {
+    const label = checkboxLabel(plugin.id, plugin.label, springSelection.includes(plugin.id));
+    const input = label.querySelector('input');
+    input.disabled = config.includedPlugins.includes(plugin.id);
+    const description = document.createElement('small');
+    description.textContent = plugin.description + (input.disabled ? ' Included in this template.' : '');
+    label.append(description);
+    return label;
+  }));
+  byId('spring-database').replaceChildren(...config.databases.map(database => new Option(database.label, database.id)));
+  byId('spring-database').value = springDatabase;
+  springDialog.showModal();
 }
 
 function checkGitLocation(delay = 0) {
@@ -588,6 +623,15 @@ initializeGit.addEventListener('change', () => { gitOverride = initializeGit.che
 byId('git-setup-guide').addEventListener('click', () => vscode.postMessage({ type: 'setupGuide', toolId: 'git' }));
 byId('refresh').addEventListener('click', () => refresh());
 byId('settings').addEventListener('click', openSettings);
+byId('choose-spring-plugins').addEventListener('click', openSpringPlugins);
+byId('cancel-spring').addEventListener('click', () => springDialog.close());
+byId('spring-form').addEventListener('submit', event => {
+  event.preventDefault();
+  springSelection = [...byId('spring-plugin-choices').querySelectorAll('input:checked')].map(input => input.value);
+  springDatabase = byId('spring-database').value;
+  updateSpringSummary();
+  springDialog.close();
+});
 byId('cancel-settings').addEventListener('click', () => settingsDialog.close());
 settingsSearch.addEventListener('input', filterSettingsTemplates);
 for (const [list, key] of [[settingsLanguages, 'disabledLanguages'], [settingsTemplates, 'disabledTemplates']]) {

@@ -57,6 +57,9 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
     private final JBCheckBox testing = new JBCheckBox("Add an example test");
     private final JButton icons = new JButton("Choose app icons…");
     private final JComboBox<Choice> libraries = new JComboBox<>();
+    private final JButton springPlugins = new JButton("Choose Spring plugins…");
+    private final List<String> selectedSpringPlugins = new ArrayList<>();
+    private String springDatabase = "auto";
     private TextFieldWithBrowseButton location;
     private Runnable checkValid = () -> {};
     private Template active;
@@ -99,6 +102,7 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         custom.addActionListener(event -> chooseZipFolder());
         monoGame.addActionListener(event -> load("installMonoGame"));
         icons.addActionListener(event -> chooseIcons());
+        springPlugins.addActionListener(event -> chooseSpringPlugins());
         testing.addActionListener(event -> {
             choices.get("framework").setEnabled(testing.isSelected());
             changed();
@@ -172,6 +176,12 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         options.addProperty("pythonVersion", pythonVersion.getText());
         options.addProperty("dependencies", dependencies.getText());
         options.addProperty("testing", testing.isSelected());
+        if (active != null && !object(active.options(), "spring").isEmpty()) {
+            var plugins = new JsonArray();
+            selectedSpringPlugins.forEach(plugins::add);
+            options.add("springPlugins", plugins);
+            options.addProperty("springDatabase", springDatabase);
+        }
         options.addProperty("executableIcon", !iconPaths.isEmpty());
         request.add("options", options);
         return request;
@@ -250,6 +260,9 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         dependencies.setText("");
         pythonVersion.setText("");
         testing.setSelected(false);
+        selectedSpringPlugins.clear();
+        springDatabase = "auto";
+        springPlugins.setText("Choose Spring plugins…");
         if (active != null) populateOptions(active.options());
         optionsPanel.revalidate();
         optionsPanel.repaint();
@@ -263,6 +276,11 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
         addChoice("language", object(options, "languageChoice"));
         addChoice("renderer", object(options, "rendererChoice"));
         addChoice("build", builds());
+        JsonObject spring = object(options, "spring");
+        if (!spring.isEmpty()) {
+            array(spring, "includedPlugins").forEach(plugin -> selectedSpringPlugins.add(plugin.getAsString()));
+            optionsPanel.add(springPlugins);
+        }
         JsonObject targetChoice = object(options, "targetChoice");
         if (!targetChoice.isEmpty()) {
             JPanel boxes = new JPanel(new FlowLayout(FlowLayout.LEADING, 4, 0));
@@ -291,6 +309,7 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
             optionsPanel.add(row(text(languageOptions, "dependencies"), new JBScrollPane(dependencies)));
         }
         if (!array(languageOptions, "frameworks").isEmpty()) {
+            testing.setText(text(languageOptions, "test"));
             optionsPanel.add(testing);
             addChoice("framework", frameworks());
             choices.get("framework").setEnabled(false);
@@ -373,6 +392,37 @@ final class WizardPeer implements ProjectGeneratorPeer<JsonObject> {
             zipFolder = chooser.getSelectedFile().getAbsolutePath();
             PropertiesComponent.getInstance().setValue(ZIP_FOLDER, zipFolder);
             load("catalog");
+        }
+    }
+
+    private void chooseSpringPlugins() {
+        if (active == null || busy) return;
+        JsonObject config = object(active.options(), "spring");
+        JPanel content = column();
+        var boxes = new LinkedHashMap<String, JBCheckBox>();
+        var included = array(config, "includedPlugins").asList().stream().map(value -> value.getAsString()).toList();
+        for (var item : array(config, "plugins")) {
+            JsonObject plugin = item.getAsJsonObject();
+            String id = text(plugin, "id");
+            var box = new JBCheckBox(text(plugin, "label"), selectedSpringPlugins.contains(id));
+            box.setToolTipText(text(plugin, "description"));
+            box.setEnabled(!included.contains(id));
+            boxes.put(id, box);
+            content.add(box);
+        }
+        var database = new JComboBox<Choice>();
+        var databases = new JsonObject();
+        databases.add("options", array(config, "databases"));
+        setChoices(database, databases, springDatabase);
+        content.add(row("SQL database", database));
+        content.add(new JBLabel("JPA and JDBC use H2 by default. External databases need connection settings."));
+        if (JOptionPane.showConfirmDialog(panel, content, "Spring plugins", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE) == JOptionPane.OK_OPTION) {
+            selectedSpringPlugins.clear();
+            boxes.forEach((id, box) -> { if (box.isSelected()) selectedSpringPlugins.add(id); });
+            springDatabase = ((Choice)database.getSelectedItem()).id();
+            springPlugins.setText("Spring plugins: " + selectedSpringPlugins.size() + " selected…");
+            changed();
         }
     }
 

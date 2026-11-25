@@ -2,7 +2,7 @@
   "name": "project-wizard",
   "displayName": "Project Wizard",
   "description": "Create CLI, desktop, mobile, web, game, Docker, and infrastructure projects with toolchain detection and custom ZIP templates.",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -62,6 +62,12 @@ const dockerStarters = [
     'A persistent Qdrant instance with a script that inserts example vectors and runs a similarity search.', {
       files: ['compose.yaml', 'demo.py', 'README.md']
     }),
+  dockerStarter('stack', 'API + PostgreSQL + Redis Stack', 'Python',
+    'A FastAPI service with PostgreSQL and Redis, health-gated startup, a hardened container, and tests.', {
+      files: ['compose.yaml', 'compose.override.yaml', 'Dockerfile', 'requirements.txt', 'requirements-dev.txt', 'env.example',
+        'db/init.sql', 'app/__init__.py', 'app/main.py', 'tests/test_app.py', 'smoke_test.py', 'README.md'],
+      sharedFiles: { 'docker/gitignore': '.gitignore', 'docker/dockerignore': '.dockerignore' }
+    }),
   dockerStarter('rag', 'Local RAG (Ollama)', 'Python',
     'A FastAPI document Q&A service with Ollama, Qdrant or PostgreSQL with pgvector, and source excerpts.', {
       choiceLabel: 'Vector database', files: [],

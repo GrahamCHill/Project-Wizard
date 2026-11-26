@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "__PROJECT_SLUG__",
+  "main": "src/index.js",
+  // Use a recent date. It selects the Workers runtime behavior your code runs with.
+  "compatibility_date": "2025-09-01",
+  "observability": { "enabled": true }
+
+  // To count visits, create a KV namespace with `npx wrangler kv namespace create VISITS`
+  // and paste the id it prints here. Without this binding, GET /api/visits answers 501.
+  // "kv_namespaces": [{ "binding": "VISITS", "id": "<your-namespace-id>" }]
+}

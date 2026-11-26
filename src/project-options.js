@@ -151,7 +151,7 @@ function buildOptions(template, tools, versions, platform, manager) {
       ...testOptions('xunit', 'nunit') };
   }
   if (template.kind !== 'starter') return;
-  if (['go-library', 'rust-library'].includes(template.id)) return;
+  if (['go-cli', 'go-server', 'go-library', 'rust-library'].includes(template.id)) return;
   if (template.id === 'typescript-express') return npmOptions;
   if (template.cmakeTarget) {
     return { ...cmakeOptions(template),

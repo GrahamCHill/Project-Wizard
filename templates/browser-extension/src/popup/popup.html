@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>__PROJECT_NAME__</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <h1 id="title">__PROJECT_NAME__</h1>
+    <p id="status" role="status">Reading this page…</p>
+    <dl id="stats" hidden>
+      <dt>Words</dt><dd id="words"></dd>
+      <dt>Reading time</dt><dd id="minutes"></dd>
+    </dl>
+    <button id="highlight" type="button" hidden>Highlight the longest paragraph</button>
+    <a id="options" href="#">Settings</a>
+  </main>
+  <script src="../shared/api.js"></script>
+  <script src="../shared/text.js"></script>
+  <script src="../shared/settings.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

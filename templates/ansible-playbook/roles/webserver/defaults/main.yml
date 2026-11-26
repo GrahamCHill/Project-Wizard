@@ -1,0 +1,3 @@
+---
+# Title shown on the home page.
+webserver_title: "{{ site_name | default('Welcome') }}"

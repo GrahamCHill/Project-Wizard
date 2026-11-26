@@ -2,6 +2,8 @@
 
 The Terraform layout uses separate roots for development and bootstrap, with reusable modules under `infra/modules/`.
 
+Start with [SETUP.md](SETUP.md) for the tools, accounts, permissions, remote state, and CI pipelines (GitHub Actions, GitLab CI, and Bitbucket Pipelines). This file covers the configuration itself.
+
 ```text
 infra/
   bootstrap-dev/              State bootstrap planning

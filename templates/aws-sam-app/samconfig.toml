@@ -1,0 +1,22 @@
+version = 0.1
+
+[default.global.parameters]
+stack_name = "__PROJECT_SLUG__"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+# Review the change set before SAM applies it. Set this to false only in automated pipelines.
+confirm_changeset = true
+# Let SAM create and manage the S3 bucket that holds the packaged code.
+resolve_s3 = true
+region = "us-east-1"
+
+[default.sync.parameters]
+watch = true

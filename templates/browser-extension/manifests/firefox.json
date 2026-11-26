@@ -1,0 +1,17 @@
+{
+  "background": {
+    "scripts": ["shared/api.js", "shared/text.js", "shared/settings.js", "background.js"]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "__PROJECT_SLUG__@example.com",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  }
+}

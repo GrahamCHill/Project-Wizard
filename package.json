@@ -89,6 +89,12 @@
           "scope": "machine",
           "description": "Absolute path to the folder containing .zip project templates."
         },
+        "projectWizard.defaultLocation": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Absolute path to the folder where new projects start. Set it with **Save as default** in the New Project wizard. Leave it empty to start in the current workspace folder or your home folder. A folder that no longer exists is ignored."
+        },
         "projectWizard.catalog": {
           "type": "object",
           "scope": "application",
@@ -139,7 +145,7 @@
     }
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test \"test/*.test.js\"",
     "package": "vsce package",
     "package:clion": "node clion/build.js"
   },

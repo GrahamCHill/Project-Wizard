@@ -17,6 +17,8 @@ const { catalogCache } = require('./catalog-cache');
 const { gitProjectStatus } = require('./git-project');
 const { projectHistory } = require('./recent-projects');
 const { executableIconFormats, loadExecutableIcons } = require('./native-app');
+const { categories, displayGroup } = require('./groups');
+const { defaultLocationKey, readDefaultLocation, startLocation, validateDefaultLocation } = require('./default-location');
 
 const configurationKey = 'projectWizard.zipTemplatesDirectory';
 const catalogKey = 'projectWizard.catalog';
@@ -92,24 +94,8 @@ function wizardHtml(webview, extensionUri) {
     <div class="workspace">
       <aside class="sidebar">
         <nav aria-label="Template categories" id="categories">
-          <button type="button" data-group="all" aria-pressed="true">All Templates</button>
-          <button type="button" data-group="cli" aria-pressed="false">Command Line</button>
-          <button type="button" data-group="systems" aria-pressed="false" hidden>Systems</button>
-          <button type="button" data-group="desktop" aria-pressed="false">Desktop</button>
-          <button type="button" data-group="mobile" aria-pressed="false">Mobile</button>
-          <button type="button" data-group="graphics" aria-pressed="false">Graphics</button>
-          <button type="button" data-group="games" aria-pressed="false">Game Engines</button>
-          <button type="button" data-group="blender" aria-pressed="false">Blender</button>
-          <button type="button" data-group="ai" aria-pressed="false">ML &amp; AI</button>
-          <button type="button" data-group="documents" aria-pressed="false" hidden>Documents</button>
-          <button type="button" data-group="vr" aria-pressed="false" hidden>VR</button>
-          <button type="button" data-group="frontend" aria-pressed="false">Web Frontend</button>
-          <button type="button" data-group="server" aria-pressed="false">Web Server</button>
-          <button type="button" data-group="docker" aria-pressed="false">Docker</button>
-          <button type="button" data-group="infrastructure" aria-pressed="false">Infrastructure</button>
-          <button type="button" data-group="monogame" aria-pressed="false">MonoGame</button>
-          <button type="button" data-group="raylib" aria-pressed="false">Raylib</button>
-          <button type="button" data-group="zip" aria-pressed="false">Custom ZIPs</button>
+          ${categories.map(({ id, title, hidden }) =>
+            `<button type="button" data-group="${id}" aria-pressed="${id === 'all'}"${hidden ? ' hidden' : ''}>${title.replace('&', '&amp;')}</button>`).join('\n          ')}
         </nav>
         <section class="environment" aria-label="Detected tools and frameworks">
           <details>
@@ -155,6 +141,7 @@ function wizardHtml(webview, extensionUri) {
           <div class="location-row">
             <input id="location" type="text" autocomplete="off" spellcheck="false" required>
             <button id="browse" class="secondary" type="button">Browse…</button>
+            <button id="default-location" class="secondary" type="button" disabled>Save as default</button>
           </div>
           <p id="destination" class="destination"></p>
           <label for="open-mode">After creation</label>
@@ -308,6 +295,10 @@ function activate(context) {
     if (session && active === session) return session.panel.webview.postMessage(message);
   };
 
+  function savedDefaultLocation() {
+    return readDefaultLocation(vscode.workspace.getConfiguration().get(defaultLocationKey, ''));
+  }
+
   function catalogSettings() {
     return readCatalogSettings(vscode.workspace.getConfiguration().get(catalogKey));
   }
@@ -415,11 +406,12 @@ function activate(context) {
     session.pythonVersions = pythonVersions;
     return send(session, {
       type: 'catalog', parent: location, separator: path.sep, openMode: session.openMode, refreshing,
+      defaultLocation: savedDefaultLocation(),
       hasWorkspace: Boolean(vscode.workspace.workspaceFolders?.length),
       settings, availableTemplates: availableTemplates.map(({ id, label, language, group, variants }) =>
-        ({ id, label, language, group, variantLanguages: variants?.map(variant => variant.language).filter(Boolean) })),
+        ({ id, label, language, group: displayGroup(group), variantLanguages: variants?.map(variant => variant.language).filter(Boolean) })),
       templates: templates.map(template => ({
-        id: template.id, group: template.group, label: template.label, language: template.language,
+        id: template.id, group: displayGroup(template.group), label: template.label, language: template.language,
         variantLanguages: template.variants?.map(variant => variant.language).filter(Boolean),
         description: template.description, requirement: template.requirement, ready: template.ready, missing: template.missing,
         options: template.options,
@@ -428,7 +420,7 @@ function activate(context) {
           template.generatorTools?.some(id => !detected[id] || detected[id].usable === false))
       })),
       detected: Object.entries(detected).filter(([id, result]) =>
-        !['vite-node', 'expo-node', 'react-native-node', 'next-node', 'nuxt-node', 'electron-node',
+        !['vite-node', 'expo-node', 'react-native-node', 'next-node', 'nuxt-node', 'electron-node', 'node-ts', 'node-22',
           'android-gradle', 'android-xr-gradle', 'compose-gradle', 'java-17', 'kmp-gradle',
           'godot-rust', 'laravel-php', 'ml-python', 'cmake-3.26', 'cmake-3.28', 'sfml2-desktop', 'wails-go'].includes(id) && result)
         .map(([id, result]) => ({ label: toolchains[id].label, ...result }))
@@ -544,6 +536,20 @@ function activate(context) {
       }
       return;
     }
+    if (message.type === 'saveDefaultLocation' || message.type === 'clearDefaultLocation') {
+      const clearing = message.type === 'clearDefaultLocation';
+      try {
+        const location = clearing ? '' : await validateDefaultLocation(message.location);
+        await vscode.workspace.getConfiguration().update(defaultLocationKey, location, vscode.ConfigurationTarget.Global);
+        return send(session, {
+          type: 'defaultLocation', defaultLocation: location,
+          message: clearing ? 'Default location cleared. New projects start in the workspace or home folder.' :
+            'Saved as the default location. New projects will start in ' + location + '.'
+        });
+      } catch (error) {
+        return send(session, { type: 'defaultLocationError', message: error.message });
+      }
+    }
     if (message.type === 'chooseZip') return chooseZipDirectory();
     if (message.type === 'chooseExecutableIcons') {
       const formats = executableIconFormats(session.templates.get(message.templateId));
@@ -603,7 +609,7 @@ function activate(context) {
     if (session?.panel.visible) void refresh(session, undefined, { background: true }).catch(error => log(error.message));
   }
 
-  function openWizard(uri, openMode) {
+  async function openWizard(uri, openMode) {
     const requestedParent = folderPath(uri);
     if (active) {
       active.panel.reveal();
@@ -620,7 +626,12 @@ function activate(context) {
       }
       return;
     }
-    const parent = requestedParent || folderPath(vscode.workspace.workspaceFolders?.[0]?.uri) || os.homedir();
+    const parent = await startLocation({
+      requested: requestedParent, saved: savedDefaultLocation(),
+      workspace: folderPath(vscode.workspace.workspaceFolders?.[0]?.uri), home: os.homedir()
+    });
+    // Another call may have opened the wizard while the saved folder was being checked.
+    if (active) return openWizard(uri, openMode);
     const panel = vscode.window.createWebviewPanel('projectWizard.newProject', 'New Project', vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
@@ -655,7 +666,7 @@ function activate(context) {
       const folder = folders.length === 1 ? folders[0] : await vscode.window.showWorkspaceFolderPick({
         placeHolder: 'Choose a parent workspace folder'
       });
-      if (folder) openWizard(folder.uri, 'workspace');
+      if (folder) await openWizard(folder.uri, 'workspace');
     }),
     vscode.commands.registerCommand('projectWizard.chooseZipDirectory', async () => {
       try {
@@ -666,6 +677,9 @@ function activate(context) {
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
       const session = active;
+      if (session && event.affectsConfiguration(defaultLocationKey)) {
+        void send(session, { type: 'defaultLocation', defaultLocation: savedDefaultLocation() });
+      }
       if (session?.initialized && (event.affectsConfiguration(configurationKey) || event.affectsConfiguration(catalogKey))) {
         void refresh(session).catch(error => reportError(session, error));
       }
@@ -689,7 +703,7 @@ function activate(context) {
     const current = history.current();
     const skip = current && await history.takeStartupSuppression(current.uri);
     await history.rememberCurrent();
-    if (!skip && !active && catalogSettings().openOnStartup) openWizard();
+    if (!skip && !active && catalogSettings().openOnStartup) await openWizard();
   })().catch(error => reportError(active, error));
 }
 

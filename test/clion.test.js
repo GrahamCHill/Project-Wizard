@@ -8,8 +8,8 @@ const { generatorRegistry, generatorSources } = require('../clion/generators');
 
 test('the CLion registry adds individual starters and defers equivalent entries to CLion', () => {
   const registry = generatorRegistry();
-  assert.equal(registry.find(entry => entry.id === 'raylib-cpp').group, 'raylib');
-  assert.equal(registry.find(entry => entry.id === 'sdl').group, 'graphics');
+  assert.equal(registry.find(entry => entry.id === 'raylib-cpp').group, 'games');
+  assert.equal(registry.find(entry => entry.id === 'sdl').group, 'games');
   assert.deepEqual(registry.find(entry => entry.id === 'sdl').platforms, ['win32', 'darwin', 'linux']);
   assert.deepEqual(registry.find(entry => entry.id === 'ios-uikit').platforms, ['darwin']);
   assert.ok(registry.find(entry => entry.id === 'rust-cli').names.includes('Rust'));

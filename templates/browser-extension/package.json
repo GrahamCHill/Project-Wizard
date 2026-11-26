@@ -1,0 +1,25 @@
+{
+  "name": "__PROJECT_SLUG__",
+  "version": "0.1.0",
+  "description": "A browser extension for Chrome, Firefox, and Safari.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:chrome": "node scripts/build.mjs chrome",
+    "build:firefox": "node scripts/build.mjs firefox",
+    "build:safari": "node scripts/build.mjs safari",
+    "test": "node --test",
+    "lint": "npm run build:firefox && web-ext lint --source-dir dist/firefox",
+    "run:firefox": "npm run build:firefox && web-ext run --source-dir dist/firefox",
+    "run:chrome": "npm run build:chrome && web-ext run --target chromium --source-dir dist/chrome",
+    "package": "npm run build && web-ext build --source-dir dist/chrome --artifacts-dir artifacts/chrome --overwrite-dest && web-ext build --source-dir dist/firefox --artifacts-dir artifacts/firefox --overwrite-dest",
+    "safari": "node scripts/safari.mjs"
+  },
+  "devDependencies": {
+    "web-ext": "^10.8.0"
+  }
+}

@@ -1,0 +1,6 @@
+# Copy this file to backend.tf and backend.hcl.example to backend.hcl, then run:
+#   terraform init -backend-config=backend.hcl -migrate-state
+# Provide the Object Storage access key through AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
+terraform {
+  backend "s3" {}
+}

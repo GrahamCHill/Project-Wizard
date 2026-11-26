@@ -1,0 +1,8 @@
+apiVersion: v2
+name: __PROJECT_SLUG__
+description: "A Helm chart for __PROJECT_NAME__"
+type: application
+# The chart version. Increase it whenever the chart changes.
+version: 0.1.0
+# The version of the application that the chart deploys.
+appVersion: "1.0.0"

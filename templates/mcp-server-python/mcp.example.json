@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "__PROJECT_SLUG__": {
+      "command": "/absolute/path/to/this/project/.venv/bin/python",
+      "args": ["-m", "mcp_app"]
+    }
+  }
+}

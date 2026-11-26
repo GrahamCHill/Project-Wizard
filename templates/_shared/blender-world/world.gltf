@@ -1,0 +1,430 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Project Wizard sample world (same layout as the Blender exporter)"
+  },
+  "extensionsUsed": [
+    "KHR_lights_punctual"
+  ],
+  "extensions": {
+    "KHR_lights_punctual": {
+      "lights": [
+        {
+          "type": "point",
+          "name": "Lamp",
+          "color": [
+            1,
+            0.93,
+            0.8
+          ],
+          "intensity": 120
+        }
+      ]
+    }
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Floor",
+      "mesh": 0,
+      "translation": [
+        0,
+        -0.1,
+        0
+      ],
+      "scale": [
+        12,
+        0.2,
+        12
+      ],
+      "extras": {
+        "collider": "box"
+      }
+    },
+    {
+      "name": "Wall_North",
+      "mesh": 1,
+      "translation": [
+        0,
+        1.5,
+        -6
+      ],
+      "scale": [
+        12,
+        3,
+        0.3
+      ],
+      "extras": {
+        "collider": "box"
+      }
+    },
+    {
+      "name": "Wall_South",
+      "mesh": 1,
+      "translation": [
+        0,
+        1.5,
+        6
+      ],
+      "scale": [
+        12,
+        3,
+        0.3
+      ],
+      "extras": {
+        "collider": "box"
+      }
+    },
+    {
+      "name": "Wall_East",
+      "mesh": 1,
+      "translation": [
+        6,
+        1.5,
+        0
+      ],
+      "scale": [
+        0.3,
+        3,
+        12
+      ],
+      "extras": {
+        "collider": "box"
+      }
+    },
+    {
+      "name": "Wall_West",
+      "mesh": 1,
+      "translation": [
+        -6,
+        1.5,
+        0
+      ],
+      "scale": [
+        0.3,
+        3,
+        12
+      ],
+      "extras": {
+        "collider": "box"
+      }
+    },
+    {
+      "name": "Crate_A",
+      "mesh": 2,
+      "translation": [
+        -2,
+        0.5,
+        -2
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "extras": {
+        "collider": "box"
+      }
+    },
+    {
+      "name": "Crate_B",
+      "mesh": 2,
+      "translation": [
+        2.5,
+        0.6,
+        -3
+      ],
+      "scale": [
+        1.2,
+        1.2,
+        1.2
+      ],
+      "rotation": [
+        0,
+        0.3826834323650898,
+        0,
+        0.9238795325112867
+      ],
+      "extras": {
+        "collider": "box"
+      }
+    },
+    {
+      "name": "Pillar",
+      "mesh": 3,
+      "translation": [
+        0,
+        1.5,
+        -0.5
+      ],
+      "scale": [
+        0.6,
+        3,
+        0.6
+      ],
+      "extras": {
+        "collider": "box"
+      }
+    },
+    {
+      "name": "Step",
+      "mesh": 4,
+      "translation": [
+        3,
+        0.2,
+        2
+      ],
+      "scale": [
+        2,
+        0.4,
+        1
+      ],
+      "extras": {
+        "collider": "box"
+      }
+    },
+    {
+      "name": "spawn_player",
+      "translation": [
+        0,
+        0,
+        4.5
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "extras": {
+        "note": "An empty. Its position is where the player starts."
+      }
+    },
+    {
+      "name": "Lamp",
+      "translation": [
+        0,
+        2.8,
+        0
+      ],
+      "extensions": {
+        "KHR_lights_punctual": {
+          "light": 0
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Floor",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1
+          },
+          "indices": 2,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Wall",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1
+          },
+          "indices": 2,
+          "material": 1,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Crate",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1
+          },
+          "indices": 2,
+          "material": 2,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Pillar",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1
+          },
+          "indices": 2,
+          "material": 3,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Step",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1
+          },
+          "indices": 2,
+          "material": 4,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "Floor",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.36,
+          0.42,
+          0.34,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.9
+      }
+    },
+    {
+      "name": "Wall",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.82,
+          0.8,
+          0.74,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.9
+      }
+    },
+    {
+      "name": "Crate",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.8,
+          0.48,
+          0.16,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.9
+      }
+    },
+    {
+      "name": "Pillar",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.25,
+          0.42,
+          0.72,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.9
+      }
+    },
+    {
+      "name": "Step",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.58,
+          0.58,
+          0.62,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.9
+      }
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3",
+      "min": [
+        -0.5,
+        -0.5,
+        -0.5
+      ],
+      "max": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5123,
+      "count": 36,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 288,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 288,
+      "byteLength": 288,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 576,
+      "byteLength": 72,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 648,
+      "uri": "data:application/octet-stream;base64,AAAAvwAAAL8AAAA/AAAAPwAAAL8AAAA/AAAAPwAAAD8AAAA/AAAAvwAAAD8AAAA/AAAAPwAAAL8AAAC/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAPwAAAD8AAAC/AAAAPwAAAL8AAAA/AAAAPwAAAL8AAAC/AAAAPwAAAD8AAAC/AAAAPwAAAD8AAAA/AAAAvwAAAL8AAAC/AAAAvwAAAL8AAAA/AAAAvwAAAD8AAAA/AAAAvwAAAD8AAAC/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAPwAAAD8AAAC/AAAAvwAAAD8AAAC/AAAAvwAAAL8AAAC/AAAAPwAAAL8AAAC/AAAAPwAAAL8AAAA/AAAAvwAAAL8AAAA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAABAAIAAAACAAMABAAFAAYABAAGAAcACAAJAAoACAAKAAsADAANAA4ADAAOAA8AEAARABIAEAASABMAFAAVABYAFAAWABcA"
+    }
+  ]
+}

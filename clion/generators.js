@@ -1,5 +1,6 @@
 const { starters } = require('../src/starters');
 const { templatesForPlatform } = require('../src/toolchains');
+const { displayGroup } = require('../src/groups');
 
 const packageName = 'com.grahamchill.projectwizard';
 const builtIn = new Set(['empty', 'c-cmake', 'cpp-cmake', 'cuda-cmake', 'cuda-library']);
@@ -15,7 +16,7 @@ const platforms = ['win32', 'darwin', 'linux'];
 function generatorRegistry() {
   const supported = platforms.map(platform => new Set(templatesForPlatform(starters, platform).map(template => template.id)));
   const generators = starters.filter(template => !builtIn.has(template.id)).map(({ id, label, group }) => ({
-    id, label, group,
+    id, label, group: displayGroup(group),
     platforms: platforms.filter((_platform, index) => supported[index].has(id)),
     names: [label, ...(nativeNames[id] || [])]
   }));

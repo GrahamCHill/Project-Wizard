@@ -1,0 +1,29 @@
+{
+  "name": "__PROJECT_SLUG__",
+  "version": "0.1.0",
+  "description": "A Model Context Protocol server with tools, a resource, and a prompt.",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "__PROJECT_SLUG__": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node src/index.ts",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "inspect": "npx @modelcontextprotocol/inspector node src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.4.0",
+    "zod": "^4.6.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.0"
+  }
+}

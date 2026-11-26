@@ -1,0 +1,7 @@
+name        = "__PROJECT_SLUG__"
+environment = "dev"
+location    = "eastus"
+vnet_cidr   = "10.20.0.0/16"
+
+# Optional. When omitted, Terraform uses ARM_SUBSCRIPTION_ID or `az account show`.
+# subscription_id = "00000000-0000-0000-0000-000000000000"

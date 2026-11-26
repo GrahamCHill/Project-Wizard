@@ -1,0 +1,14 @@
+# Docker Compose loads this file automatically next to compose.yaml, so `docker compose up` is the development setup.
+# For production, run `docker compose -f compose.yaml up -d` to skip it.
+services:
+  api:
+    # Edit app/ and the server reloads. tests/ is mounted so you can run the tests in the container.
+    volumes:
+      - ./app:/srv/app:ro
+      - ./tests:/srv/tests:ro
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  db:
+    # Lets tools on your computer, such as psql or a database GUI, connect to the development database.
+    ports:
+      - "127.0.0.1:${DB_PORT:-15432}:5432"

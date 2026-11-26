@@ -25,6 +25,104 @@ const wailsStarter = {
   next: 'Follow the development and packaging commands in README.md.'
 };
 
+const wailsTests = {
+  wails2: {
+    source: 'app.go', file: 'app_test.go', declaration: /^func \(\w+ \*App\) Greet\(\w+ string\) string/m,
+    contents: `package main
+
+import (
+	"context"
+	"strings"
+	"testing"
+)
+
+func TestGreetIncludesTheName(t *testing.T) {
+	app := NewApp()
+	for _, name := range []string{"Ada", "World", "José"} {
+		if got := app.Greet(name); !strings.Contains(got, name) {
+			t.Fatalf("Greet(%q) = %q, want it to contain the name", name, got)
+		}
+	}
+}
+
+func TestGreetAlwaysReturnsAMessage(t *testing.T) {
+	if got := NewApp().Greet(""); strings.TrimSpace(got) == "" {
+		t.Fatal("Greet(\\"\\") returned an empty message")
+	}
+}
+
+func TestStartupKeepsTheRuntimeContext(t *testing.T) {
+	type key struct{}
+	ctx := context.WithValue(context.Background(), key{}, "value")
+	app := NewApp()
+	app.startup(ctx)
+	if app.ctx != ctx {
+		t.Fatal("startup should keep the context that Wails passes in")
+	}
+}
+`
+  },
+  wails3: {
+    source: 'greetservice.go', file: 'greetservice_test.go', declaration: /^func \(\w+ \*GreetService\) Greet\(\w+ string\) string/m,
+    contents: `package main
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestGreetIncludesTheName(t *testing.T) {
+	service := &GreetService{}
+	for _, name := range []string{"Ada", "World", "José"} {
+		if got := service.Greet(name); !strings.Contains(got, name) {
+			t.Fatalf("Greet(%q) = %q, want it to contain the name", name, got)
+		}
+	}
+}
+
+func TestGreetAlwaysReturnsAMessage(t *testing.T) {
+	if got := (&GreetService{}).Greet(""); strings.TrimSpace(got) == "" {
+		t.Fatal("Greet(\\"\\") returned an empty message")
+	}
+}
+`
+  }
+};
+
+// Adds a Go test for the generated greeting method. It returns false, and writes nothing, when the
+// generator's template no longer has the method this test calls, so a template change cannot break creation.
+async function addWailsTests(output, version, log) {
+  const test = wailsTests[version.id];
+  const source = await fs.readFile(path.join(output, test.source), 'utf8').catch(() => '');
+  if (!test.declaration.test(source)) {
+    log?.('Skipped the Go test because ' + test.source + ' does not have the expected Greet method.');
+    return false;
+  }
+  await fs.writeFile(path.join(output, test.file), test.contents, { flag: 'wx' });
+  // main.go embeds frontend/dist, which Git ignores and only a frontend build creates. A placeholder
+  // lets `go test` compile before the first build. Wails 2 already creates one.
+  const dist = path.join(output, 'frontend', 'dist');
+  if ((await fs.readdir(dist).catch(() => [])).length === 0) {
+    await fs.mkdir(dist, { recursive: true });
+    await fs.writeFile(path.join(dist, '.gitkeep'), '');
+  }
+  return true;
+}
+
+function testInstructions(version) {
+  return [
+    '## Tests', '',
+    'Run the Go tests from the project folder:', '',
+    '~~~sh', 'go test ./...', 'go vet ./...', '~~~', '',
+    'The package embeds `frontend/dist`, which Git ignores, so a fresh clone or CI job needs a frontend build first:', '',
+    '~~~sh', 'npm --prefix frontend install', 'npm --prefix frontend run build', 'go test ./...', '~~~', '',
+    version.id === 'wails3' ?
+      'On Linux, compiling the package also needs the GTK 4 and WebKitGTK 6.0 development files that `wails3 dev` uses.' :
+      'On Linux, compiling the package also needs the GTK 3 and WebKitGTK 4.1 development files. Add `-tags webkit2_41` to `go test` and `go vet` when your system provides WebKitGTK 4.1.',
+    ''
+  ];
+}
+
 async function createWailsProject(name, project, tools, build, log) {
   const version = wailsVersions.find(option => option.id === build);
   if (!version || version.generatorTools.some(id => !tools[id] || tools[id].usable === false)) {
@@ -70,6 +168,7 @@ async function createWailsProject(name, project, tools, build, log) {
     settings.info = { ...settings.info, productName: name };
     await fs.writeFile(config, JSON.stringify(settings, null, 2) + '\n');
   }
+  const hasTests = await addWailsTests(output, version, log);
   await fs.writeFile(path.join(output, 'README.md'), [
     '# ' + name, '', 'A ' + version.label + ' desktop app with a Vite frontend that calls a Go greeting method.', '',
     '## Development', '',
@@ -82,17 +181,18 @@ async function createWailsProject(name, project, tools, build, log) {
     '## Distribution', '',
     ...(modern ? ['Run `wails3 build` for a build or `wails3 task package` to package for your current platform. Outputs go under `bin/`.'] :
       ['Run `wails build` to package for the current platform. On Linux use `wails build -tags webkit2_41`. Outputs go under `build/bin/`.']),
-    'On macOS, share the complete `.app` bundle. Linux users need the matching system webview libraries.', ''
+    'On macOS, share the complete `.app` bundle. Linux users need the matching system webview libraries.', '',
+    ...(hasTests ? testInstructions(version) : [])
   ].join('\n'));
   const generated = await fs.realpath(output);
   if (path.dirname(generated) !== await fs.realpath(project)) {
     throw new Error('The Wails generator wrote outside the project staging folder.');
   }
   // Copy first: Windows can reject renaming directories produced by the generator.
-  for (const entry of entries) await fs.cp(path.join(generated, entry), path.join(project, entry), {
+  for (const entry of await fs.readdir(generated)) await fs.cp(path.join(generated, entry), path.join(project, entry), {
     recursive: true, force: false, errorOnExist: true
   });
   await fs.rm(generated, { recursive: true, force: true });
 }
 
-module.exports = { createWailsProject, wailsStarter, wailsVersions };
+module.exports = { addWailsTests, createWailsProject, wailsStarter, wailsVersions };

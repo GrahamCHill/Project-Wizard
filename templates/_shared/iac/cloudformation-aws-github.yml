@@ -1,0 +1,107 @@
+# Lints the CloudFormation template on every pull request and push. It can also preview and deploy changes.
+#
+# Lint needs no AWS account. Preview and Deploy stay off until you set the repository variable
+# CFN_DEPLOY to "true" and give the workflow an AWS role. README.md ("Deploy from GitHub Actions") lists the steps.
+name: CloudFormation
+
+on:
+  pull_request:
+    paths:
+      - "template.yaml"
+      - ".github/workflows/cloudformation.yml"
+  push:
+    # Change these names if your default branch has a different name.
+    branches: [main, master]
+    paths:
+      - "template.yaml"
+      - ".github/workflows/cloudformation.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: cloudformation-${{ github.ref }}
+  # Never cancel a run that may be changing the stack.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install cfn-lint
+        run: python -m pip install cfn-lint
+      - name: Lint the template
+        run: cfn-lint template.yaml
+
+  preview:
+    name: Preview changes
+    needs: lint
+    # Pull requests only, never for forks, and only once deployment is enabled.
+    if: >-
+      github.event_name == 'pull_request' && vars.CFN_DEPLOY == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      STACK_NAME: ${{ vars.CFN_STACK_NAME }}
+      PARAMETERS: ${{ vars.CFN_PARAMETERS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Create a change set without running it
+        run: |
+          # PARAMETERS holds Key=Value pairs separated by spaces, so it is expanded unquoted on purpose.
+          # shellcheck disable=SC2086
+          aws cloudformation deploy --template-file template.yaml --stack-name "$STACK_NAME" \
+            --no-execute-changeset --no-fail-on-empty-changeset \
+            ${PARAMETERS:+--parameter-overrides $PARAMETERS}
+      - name: Summarize the change set
+        run: |
+          change_set=$(aws cloudformation list-change-sets --stack-name "$STACK_NAME" \
+            --query 'sort_by(Summaries, &CreationTime)[-1].ChangeSetName' --output text)
+          {
+            echo '### Pending CloudFormation changes'
+            echo '~~~'
+            aws cloudformation describe-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set" \
+              --query 'Changes[].ResourceChange.[Action,LogicalResourceId,ResourceType]' --output text || true
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy
+    needs: lint
+    if: >-
+      github.event_name == 'push' && vars.CFN_DEPLOY == 'true' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    # Add required reviewers to this environment in Settings > Environments for a manual approval step.
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      STACK_NAME: ${{ vars.CFN_STACK_NAME }}
+      PARAMETERS: ${{ vars.CFN_PARAMETERS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Deploy the stack
+        run: |
+          # shellcheck disable=SC2086
+          aws cloudformation deploy --template-file template.yaml --stack-name "$STACK_NAME" \
+            --no-fail-on-empty-changeset \
+            ${PARAMETERS:+--parameter-overrides $PARAMETERS}

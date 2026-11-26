@@ -1,0 +1,9 @@
+product_id,name,category,unit_price
+1,Keyboard,Hardware,59.00
+2,Monitor,Hardware,229.50
+3,Headset,Hardware,89.90
+4,Editor Pro,Software,149.00
+5,Cloud Backup,Software,12.00
+6,Antivirus,Software,39.99
+7,Setup Service,Services,75.00
+8,Training Day,Services,480.00

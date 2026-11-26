@@ -1,0 +1,151 @@
+# Checks Terraform on every pull request and push, and can plan and apply changes.
+#
+# Check needs no cloud account. It runs fmt, validate, and the tests that use mock providers.
+# Plan and Apply stay off until you set the repository variable TERRAFORM_DEPLOY to "true".
+# SETUP.md ("Continuous integration") lists the variables and the cloud trust to create first.
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - "**/*.tf"
+      - "**/*.tftest.hcl"
+      - "**/.terraform.lock.hcl"
+      - ".github/workflows/terraform.yml"
+  push:
+    # Change these names if your default branch has a different name.
+    branches: [main, master]
+    paths:
+      - "**/*.tf"
+      - "**/*.tftest.hcl"
+      - "**/.terraform.lock.hcl"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  # Never cancel a run that may be applying changes.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  # Use "~> 1.9" for the newest 1.x release, or pin an exact version such as "1.17.2".
+  TERRAFORM_VERSION: "~> 1.9"
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Check formatting
+        run: terraform fmt -check -recursive .
+      - name: Initialize without a backend
+        run: terraform init -backend=false
+      - name: Validate
+        run: terraform validate
+      - name: Run tests
+        run: terraform test
+
+  plan:
+    name: Plan
+    needs: check
+    # Skip until deployment is enabled, and never run with credentials for pull requests from forks.
+    if: >-
+      vars.TERRAFORM_DEPLOY == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Require remote state
+        run: |
+          if [ ! -f backend.tf ]; then
+            echo "Copy backend.tf.example to backend.tf and commit it before enabling deployment. Without remote state, CI would lose track of what it creates."
+            exit 1
+          fi
+      - name: Write backend and variable files
+        env:
+          TF_BACKEND_CONFIG: ${{ vars.TF_BACKEND_CONFIG }}
+          TF_VARS: ${{ vars.TF_VARS }}
+        run: |
+          printf '%s\n' "${TF_BACKEND_CONFIG:-}" > backend.hcl
+          if [ -z "${TF_VARS:-}" ]; then TF_VARS='{}'; fi
+          printf '%s\n' "$TF_VARS" > ci.auto.tfvars.json
+      - name: Initialize
+        run: terraform init -backend-config=backend.hcl
+      - name: Plan
+        run: terraform plan -lock-timeout=5m -out=tfplan
+      - name: Summarize the plan
+        run: |
+          {
+            echo '### Terraform plan'
+            echo '~~~'
+            terraform show -no-color tfplan | head -c 60000
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # The plan file can contain sensitive values, so it expires after one day.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: tfplan
+          retention-days: 1
+
+  apply:
+    name: Apply
+    needs: plan
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    # Add required reviewers to this environment in Settings > Environments for a manual approval step.
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Write backend and variable files
+        env:
+          TF_BACKEND_CONFIG: ${{ vars.TF_BACKEND_CONFIG }}
+          TF_VARS: ${{ vars.TF_VARS }}
+        run: |
+          printf '%s\n' "${TF_BACKEND_CONFIG:-}" > backend.hcl
+          if [ -z "${TF_VARS:-}" ]; then TF_VARS='{}'; fi
+          printf '%s\n' "$TF_VARS" > ci.auto.tfvars.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: .
+      - name: Initialize
+        run: terraform init -backend-config=backend.hcl
+      - name: Apply the reviewed plan
+        run: terraform apply -lock-timeout=5m tfplan

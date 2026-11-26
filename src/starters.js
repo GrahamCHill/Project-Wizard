@@ -12,6 +12,10 @@ const { qtStarter, renderQt, resolveQt } = require('./qt');
 const { wailsStarter } = require('./wails');
 const { dockerStarters, resolveDockerStarter } = require('./docker-starters');
 const { springStarters, renderSpring } = require('./spring');
+const { infrastructureStarters } = require('./infrastructure-starters');
+const { aiStarters } = require('./ai-starters');
+const { miscStarters } = require('./misc-starters');
+const { appStarters } = require('./app-starters');
 
 const sfmlStarter = {
   group: 'graphics', kind: 'starter', language: 'C++', cmakeTarget: 'app',
@@ -104,6 +108,10 @@ const starters = [
   ...dockerStarters,
   ...springStarters,
   ...standardTemplates,
+  ...infrastructureStarters,
+  ...aiStarters,
+  ...miscStarters,
+  ...appStarters,
   ...generators,
   ...externalGenerators,
   wailsStarter,

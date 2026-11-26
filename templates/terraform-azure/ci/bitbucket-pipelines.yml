@@ -1,0 +1,73 @@
+# Bitbucket Pipelines example. Copy this file to bitbucket-pipelines.yml in the repository root.
+#
+# The check step needs no cloud account. The plan and apply steps do nothing until you add the
+# repository variable TERRAFORM_DEPLOY with the value "true". Add these repository variables
+# (mark credentials as Secured):
+#   TF_BACKEND_CONFIG   contents of backend.hcl
+#   TF_VARS             non-secret input values as JSON, such as {"name": "my-app"}
+#   ARM_CLIENT_ID
+#   ARM_CLIENT_SECRET
+#   ARM_TENANT_ID
+#   ARM_SUBSCRIPTION_ID
+# Create a service principal for CI with the roles in SETUP.md, or use Bitbucket OIDC with a federated credential instead of a client secret.
+# SETUP.md ("Continuous integration") explains each value.
+image: hashicorp/terraform:1.17
+
+definitions:
+  steps:
+    - step: &check
+        name: Check
+        script:
+          - terraform fmt -check -recursive .
+          - terraform init -backend=false
+          - terraform validate
+          - terraform test
+    - step: &plan
+        name: Plan
+        script:
+          - if [ "${TERRAFORM_DEPLOY:-}" != "true" ]; then echo "Deployment is off. Set TERRAFORM_DEPLOY=true to plan."; exit 0; fi
+          - |
+            if [ ! -f backend.tf ]; then
+              echo "Copy backend.tf.example to backend.tf and commit it before enabling deployment. Without remote state, CI would lose track of what it creates."
+              exit 1
+            fi
+          - printf '%s\n' "${TF_BACKEND_CONFIG:-}" > backend.hcl
+          - if [ -z "${TF_VARS:-}" ]; then TF_VARS='{}'; fi
+          - printf '%s\n' "$TF_VARS" > ci.auto.tfvars.json
+          - terraform init -backend-config=backend.hcl
+          - terraform plan -lock-timeout=5m -out=tfplan
+        # The plan file can contain sensitive values, so keep it only for the apply step.
+        artifacts:
+          - tfplan
+    - step: &apply
+        name: Apply
+        deployment: production
+        trigger: manual
+        script:
+          - if [ "${TERRAFORM_DEPLOY:-}" != "true" ]; then echo "Deployment is off."; exit 0; fi
+          - |
+            if [ ! -f backend.tf ]; then
+              echo "Copy backend.tf.example to backend.tf and commit it before enabling deployment. Without remote state, CI would lose track of what it creates."
+              exit 1
+            fi
+          - printf '%s\n' "${TF_BACKEND_CONFIG:-}" > backend.hcl
+          - if [ -z "${TF_VARS:-}" ]; then TF_VARS='{}'; fi
+          - printf '%s\n' "$TF_VARS" > ci.auto.tfvars.json
+          - terraform init -backend-config=backend.hcl
+          - terraform apply -lock-timeout=5m tfplan
+
+pipelines:
+  pull-requests:
+    "**":
+      - step: *check
+      - step: *plan
+  branches:
+    # Change these names if your default branch has a different name.
+    main:
+      - step: *check
+      - step: *plan
+      - step: *apply
+    master:
+      - step: *check
+      - step: *plan
+      - step: *apply

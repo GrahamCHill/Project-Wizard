@@ -1,0 +1,18 @@
+[package]
+name = "__PROJECT_SLUG__"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+
+[dependencies]
+bevy = "0.20.1"
+# The glTF reader. "extras" is how it exposes Blender's custom properties, and KHR_lights_punctual is how it exposes lamps.
+gltf = { version = "1.4.1", default-features = false, features = ["import", "utils", "names", "extras", "KHR_lights_punctual"] }
+serde_json = "1"
+
+# Bevy is slow to run unoptimized. These settings keep your own code easy to debug and make Bevy itself fast.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

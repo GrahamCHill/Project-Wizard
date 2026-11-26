@@ -1,0 +1,5 @@
+project_id  = "replace-with-your-project-id"
+name        = "__PROJECT_SLUG__"
+environment = "dev"
+region      = "us-central1"
+subnet_cidr = "10.10.0.0/20"

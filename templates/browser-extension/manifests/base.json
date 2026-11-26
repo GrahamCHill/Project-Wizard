@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "__PROJECT_NAME__",
+  "description": "Shows how many words a web page has and how long it takes to read.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "__PROJECT_NAME__",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["shared/api.js", "shared/text.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

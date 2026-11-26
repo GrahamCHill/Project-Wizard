@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "app-__PROJECT_SLUG__"
+version = "0.1.0"
+description = "A DuckDB analytics warehouse with SQL reports."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+"__PROJECT_SLUG__" = "shop_analytics.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

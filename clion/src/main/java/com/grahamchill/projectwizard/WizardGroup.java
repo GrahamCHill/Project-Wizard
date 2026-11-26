@@ -4,22 +4,23 @@ import com.intellij.icons.AllIcons;
 
 import javax.swing.Icon;
 
+/**
+ * Categories in the New Project dialog. The constants match the ids in src/groups.js, which merges related template
+ * groups (for example Raylib, MonoGame, graphics, and game engines are all GAMES). A test checks that every group the
+ * generated registry uses has a constant here.
+ */
 enum WizardGroup {
-    RAYLIB("Raylib", AllIcons.Actions.Execute),
-    GRAPHICS("Graphics", AllIcons.FileTypes.Image),
-    GAMES("Game Engines", AllIcons.Nodes.RunnableMark),
-    DESKTOP("Desktop", AllIcons.Nodes.Desktop),
+    GAMES("Games & Graphics", AllIcons.Nodes.RunnableMark),
+    APPS("Desktop & Mobile", AllIcons.Nodes.Desktop),
     CLI("Command Line", AllIcons.Nodes.Console),
     SYSTEMS("Systems", AllIcons.FileTypes.BinaryData),
-    MOBILE("Mobile", AllIcons.Nodes.Module),
     VR("VR", AllIcons.Actions.ViewAsImage),
-    FRONTEND("Web Frontend", AllIcons.Nodes.PpWeb),
-    SERVER("Web Server", AllIcons.General.Web),
-    DOCKER("Docker", AllIcons.FileTypes.Docker),
-    INFRASTRUCTURE("Infrastructure", AllIcons.Nodes.Deploy),
-    AI("ML and AI", AllIcons.Nodes.DataSchema),
+    WEB("Web", AllIcons.General.Web),
+    CLOUD("Cloud & DevOps", AllIcons.Nodes.Deploy),
+    AI("Data & AI", AllIcons.Nodes.DataSchema),
     BLENDER("Blender", AllIcons.FileTypes.Image),
     DOCUMENTS("Documents", AllIcons.FileTypes.Text),
+    MISC("Misc", AllIcons.Nodes.Folder),
     GENERAL("General", AllIcons.Nodes.Folder),
     CUSTOM("Custom Templates", AllIcons.FileTypes.Archive);
 

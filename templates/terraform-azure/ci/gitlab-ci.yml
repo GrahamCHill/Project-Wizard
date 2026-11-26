@@ -1,0 +1,83 @@
+# GitLab CI example. Copy this file to .gitlab-ci.yml in the repository root.
+#
+# check needs no cloud account. plan and apply stay off until you add the CI/CD variable
+# TERRAFORM_DEPLOY with the value "true". Add these CI/CD variables (masked, and protected when you
+# run only from protected branches):
+#   TF_BACKEND_CONFIG   contents of backend.hcl (type: Variable)
+#   TF_VARS             non-secret input values as JSON, such as {"name": "my-app"} (type: Variable)
+#   ARM_CLIENT_ID
+#   ARM_CLIENT_SECRET
+#   ARM_TENANT_ID
+#   ARM_SUBSCRIPTION_ID
+# Create a service principal for CI with the roles in SETUP.md, or use GitLab OIDC with a federated credential instead of a client secret.
+# SETUP.md ("Continuous integration") explains each value.
+
+default:
+  image:
+    name: hashicorp/terraform:1.17
+    entrypoint: [""]
+
+stages: [check, plan, apply]
+
+variables:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_ROOT: .
+
+check:
+  stage: check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - cd "$TF_ROOT"
+    - terraform fmt -check -recursive .
+    - terraform init -backend=false
+    - terraform validate
+    - terraform test
+
+plan:
+  stage: plan
+  needs: [check]
+  resource_group: terraform-state
+  rules:
+    - if: $TERRAFORM_DEPLOY == "true" && $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $TERRAFORM_DEPLOY == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - cd "$TF_ROOT"
+    - |
+      if [ ! -f backend.tf ]; then
+        echo "Copy backend.tf.example to backend.tf and commit it before enabling deployment. Without remote state, CI would lose track of what it creates."
+        exit 1
+      fi
+    - printf '%s\n' "${TF_BACKEND_CONFIG:-}" > backend.hcl
+    - if [ -z "${TF_VARS:-}" ]; then TF_VARS='{}'; fi
+    - printf '%s\n' "$TF_VARS" > ci.auto.tfvars.json
+    - terraform init -backend-config=backend.hcl
+    - terraform plan -lock-timeout=5m -out=tfplan
+  # The plan file can contain sensitive values, so it expires after one day.
+  artifacts:
+    paths:
+      - tfplan
+    expire_in: 1 day
+
+apply:
+  stage: apply
+  needs: [plan]
+  resource_group: terraform-state
+  environment: production
+  rules:
+    - if: $TERRAFORM_DEPLOY == "true" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  script:
+    - cd "$TF_ROOT"
+    - |
+      if [ ! -f backend.tf ]; then
+        echo "Copy backend.tf.example to backend.tf and commit it before enabling deployment. Without remote state, CI would lose track of what it creates."
+        exit 1
+      fi
+    - printf '%s\n' "${TF_BACKEND_CONFIG:-}" > backend.hcl
+    - if [ -z "${TF_VARS:-}" ]; then TF_VARS='{}'; fi
+    - printf '%s\n' "$TF_VARS" > ci.auto.tfvars.json
+    - terraform init -backend-config=backend.hcl
+    - terraform apply -lock-timeout=5m tfplan

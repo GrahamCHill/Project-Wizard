@@ -1,0 +1,2 @@
+bucket = "replace-with-your-state-bucket"
+prefix = "__PROJECT_SLUG__/dev"

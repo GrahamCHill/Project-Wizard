@@ -77,7 +77,7 @@ const standardTemplates = [
   starter('terraform-infrastructure', 'infrastructure', 'Terraform', 'Terraform Infrastructure',
     'An environment-based Terraform layout with separate bootstrap roots and reusable networking and ingestion modules.',
     ['terraform'], [
-      'README.md', 'gitignore',
+      'README.md', 'SETUP.md', 'gitignore', 'ci/gitlab-ci.yml', 'ci/bitbucket-pipelines.yml',
       'infra/bootstrap-dev/main.tf', 'infra/bootstrap-dev/backend.tf.example', 'infra/bootstrap-dev/backend.hcl.example',
       'infra/bootstrap-dev-scan-access/main.tf', 'infra/bootstrap-dev-scan-access/backend.tf.example',
       'infra/bootstrap-dev-scan-access/backend.hcl.example',
@@ -88,7 +88,10 @@ const standardTemplates = [
       'infra/modules/private_network/outputs.tf', 'infra/modules/private_network/versions.tf',
       'infra/modules/ingestion/main.tf', 'infra/modules/ingestion/variables.tf',
       'infra/modules/ingestion/outputs.tf', 'infra/modules/ingestion/versions.tf'
-    ], undefined, { requirement: 'Terraform 1.9 or newer. The sample validates and plans locally.' }),
+    ], undefined, {
+      requirement: 'Terraform 1.9 or newer. The sample validates and plans locally.',
+      sharedFiles: { 'terraform/terraform-infrastructure-github.yml': '.github/workflows/terraform.yml' }
+    }),
   starter('blender-extension', 'blender', 'Python', 'Blender Add-on Extension',
     'A Blender extension that adds an animated turntable operator to the 3D View Add menu.',
     ['blender'], ['blender_manifest.toml', '__init__.py', 'gitignore'],
@@ -317,10 +320,14 @@ const standardTemplates = [
   starter('rust-server', 'server', 'Rust', 'Rust Axum API', 'An async JSON endpoint built with Axum and Tokio.',
     ['rust'], ['Cargo.toml', 'src/main.rs', 'gitignore'], ['cargo run'], { note: 'The first build downloads crates. Open http://127.0.0.1:8080 after starting the server.' }),
 
-  starter('go-cli', 'cli', 'Go', 'Go Command Line', 'A standalone Go module with a main package.',
-    ['go'], ['go.mod', 'main.go'], ['go run .']),
-  starter('go-server', 'server', 'Go', 'Go HTTP Server', 'A local JSON endpoint built with net/http.',
-    ['go'], ['go.mod', 'main.go'], ['go run .'], { note: 'Open http://127.0.0.1:8080 after starting the server.' }),
+  starter('go-cli', 'cli', 'Go', 'Go Command Line',
+    'A standalone Go module with a testable main package, a -name flag, and table-driven tests.',
+    ['go'], ['go.mod', 'main.go', 'main_test.go', 'gitignore'], ['go run .', 'go run . -name Ada', 'go test ./...', 'go vet ./...'],
+    { note: 'Put program logic in functions such as run so tests can call it with their own arguments and output buffers.' }),
+  starter('go-server', 'server', 'Go', 'Go HTTP Server',
+    'A local JSON endpoint built with net/http and handler tests that use httptest.',
+    ['go'], ['go.mod', 'main.go', 'main_test.go', 'gitignore'], ['go run .', 'go test ./...', 'go vet ./...'],
+    { note: 'Open http://127.0.0.1:8080 after starting the server. The tests call newHandler directly, so they do not open a port.' }),
 
   starter('swift-cli', 'cli', 'Swift', 'Swift Package Executable', 'A command-line executable managed with Swift Package Manager.',
     ['swift'], ['Package.swift', 'Sources/App/main.swift', 'gitignore'], ['swift run']),
@@ -369,4 +376,4 @@ const standardTemplates = [
     ['npm install', 'npm run dev'], { note: 'Use npm run build to type-check and build the site.' })
 ];
 
-module.exports = { standardTemplates };
+module.exports = { standardTemplates, starter };

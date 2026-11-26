@@ -1,0 +1,5 @@
+{
+  "background": {
+    "scripts": ["shared/api.js", "shared/text.js", "shared/settings.js", "background.js"]
+  }
+}

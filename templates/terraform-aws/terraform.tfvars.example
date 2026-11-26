@@ -1,0 +1,7 @@
+name        = "__PROJECT_SLUG__"
+environment = "dev"
+region      = "us-east-1"
+
+# Keep these zones inside the selected region.
+availability_zones = ["us-east-1a", "us-east-1b"]
+vpc_cidr           = "10.0.0.0/16"

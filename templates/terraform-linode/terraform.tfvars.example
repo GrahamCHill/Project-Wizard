@@ -1,0 +1,7 @@
+name        = "__PROJECT_SLUG__"
+environment = "dev"
+region      = "us-ord"
+
+# Replace with your own public key and your own address.
+authorized_keys   = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIReplaceWithYourPublicKey you@example.com"]
+ssh_allowed_cidrs = ["203.0.113.10/32"]

@@ -1,0 +1,8 @@
+bucket  = "replace-with-your-state-bucket"
+key     = "__PROJECT_SLUG__/dev/terraform.tfstate"
+region  = "us-east-1"
+encrypt = true
+
+# S3 native state locking needs Terraform 1.10 or newer.
+# On Terraform 1.9, remove this line and set dynamodb_table to an existing lock table.
+use_lockfile = true

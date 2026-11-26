@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "app-__PROJECT_SLUG__"
+version = "0.1.0"
+description = "A chat client for Claude, Groq, and OpenAI-compatible models."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+"__PROJECT_SLUG__" = "llm_chat.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

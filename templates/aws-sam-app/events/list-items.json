@@ -1,0 +1,7 @@
+{
+  "version": "2.0",
+  "routeKey": "GET /items",
+  "rawPath": "/items",
+  "requestContext": { "http": { "method": "GET", "path": "/items" } },
+  "isBase64Encoded": false
+}

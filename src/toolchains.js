@@ -14,6 +14,21 @@ const toolchains = {
     instructions: 'Install a current Terraform release and add it to PATH. Then refresh templates.',
     windows: 'winget install --exact --id Hashicorp.Terraform', macos: 'brew install hashicorp/tap/terraform'
   },
+  kubectl: {
+    label: 'kubectl 1.27+', url: 'https://kubernetes.io/docs/tasks/tools/',
+    instructions: 'Install kubectl 1.27 or newer and add it to PATH. Its built-in Kustomize renders the overlays; no cluster is needed to build them.',
+    windows: 'winget install --exact --id Kubernetes.kubectl', macos: 'brew install kubectl'
+  },
+  helm: {
+    label: 'Helm 3.8+', url: 'https://helm.sh/docs/intro/install/',
+    instructions: 'Install Helm 3.8 or newer and add it to PATH. Helm lints and renders the chart without a cluster.',
+    windows: 'winget install --exact --id Helm.Helm', macos: 'brew install helm'
+  },
+  ansible: {
+    label: 'Ansible 2.15+', url: 'https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html',
+    instructions: 'Install ansible-core 2.15 or newer on Linux or macOS. On Windows, use it from WSL. Then refresh templates.',
+    macos: 'brew install ansible'
+  },
   docker: {
     label: 'Docker CLI', url: 'https://docs.docker.com/get-started/get-docker/',
     instructions: 'Install Docker Desktop or Docker Engine for your operating system.',
@@ -222,6 +237,26 @@ const toolchains = {
   'electron-node': {
     label: 'Node.js for Electron Forge', url: 'https://nodejs.org/en/download',
     instructions: 'Install the current Node.js LTS release. This Electron starter requires Node.js 22.13 or newer.'
+  },
+  'node-ts': {
+    label: 'Node.js with TypeScript support', url: 'https://nodejs.org/en/download',
+    instructions: 'Install the current Node.js LTS release. These starters run TypeScript directly, which needs Node.js 22.18+ on 22.x, 23.6+, or Node.js 24 or newer.',
+    windows: 'winget install --exact --id OpenJS.NodeJS.LTS'
+  },
+  'node-22': {
+    label: 'Node.js 22.12+', url: 'https://nodejs.org/en/download',
+    instructions: 'Install the current Node.js LTS release. Wrangler requires Node.js 22.12 or newer.',
+    windows: 'winget install --exact --id OpenJS.NodeJS.LTS'
+  },
+  sam: {
+    label: 'AWS SAM CLI', url: 'https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html',
+    instructions: 'Install the AWS SAM CLI and add it to PATH. Building and running functions locally also needs Docker.',
+    windows: 'winget install --exact --id Amazon.SAM-CLI', macos: 'brew install aws-sam-cli'
+  },
+  bicep: {
+    label: 'Bicep CLI', url: 'https://learn.microsoft.com/azure/azure-resource-manager/bicep/install',
+    instructions: 'Install the standalone Bicep CLI and add it to PATH. The Azure CLI can also install it with `az bicep install`.',
+    windows: 'winget install --exact --id Microsoft.Bicep', macos: 'brew tap azure/bicep && brew install bicep'
   },
   'tauri-windows': {
     label: 'Tauri Windows prerequisites', url: 'https://v2.tauri.app/start/prerequisites/#windows',
@@ -560,7 +595,9 @@ async function findNodeTools({ env, platform }, probe) {
     'react-native-node': node && supportsReactNative(node.version) ? node : undefined,
     'next-node': requireVersion(node, 20, 9),
     'nuxt-node': node && { ...node, usable: supportsNuxt(node.version) },
-    'electron-node': requireVersion(node, 22, 13)
+    'electron-node': requireVersion(node, 22, 13),
+    'node-ts': node && { ...node, usable: supportsNodeTypeScript(node.version) },
+    'node-22': requireVersion(node, 22, 12)
   };
 }
 
@@ -631,6 +668,12 @@ function supportsReactNative(version) {
 function supportsNuxt(version) {
   return (version.startsWith('22.') && atLeast(version, 22, 22, 3)) ||
     (version.startsWith('24.') && atLeast(version, 24, 15)) || atLeast(version, 26);
+}
+
+// Node.js strips TypeScript types by default from 22.18, 23.6, and 24.0.
+function supportsNodeTypeScript(version) {
+  return (version.startsWith('22.') && atLeast(version, 22, 18)) || (version.startsWith('23.') && atLeast(version, 23, 6)) ||
+    atLeast(version, 24);
 }
 
 function requireVersion(tool, ...minimum) {
@@ -1101,7 +1144,7 @@ async function detectToolchains(settings = system) {
     return required.every(files => files.length) ? kit : undefined;
   };
   const [[wx, gtk, x11, wayland, gl], [xrandr, xcursor, udev, freetype, xi, harfbuzz], gtk4, gtkmm, webkit, webkit6,
-    ssl, webView, editors, supplemental, boards, wails, docker, terraform] = await Promise.all([
+    ssl, webView, editors, supplemental, boards, wails, docker, terraform, kubectl, helm, ansible, sam, bicep] = await Promise.all([
     linuxGraphics,
     platform === 'linux' ? Promise.all(['xrandr', 'xcursor', 'libudev', 'freetype2', 'xi', 'harfbuzz'].map(pkgConfig)) : [],
     gtkKit('gtk4', 'gcc'), gtkKit('gtkmm-4.0', 'g++'),
@@ -1114,12 +1157,22 @@ async function detectToolchains(settings = system) {
     findBoardTools(settings, probe, directories, compiler),
     findWailsTools(go, settings, directories),
     findDockerTools(settings, probe),
-    probe(['terraform'], ['version'], /^Terraform v(\d+\.\d+\.\d+)/m)
+    probe(['terraform'], ['version'], /^Terraform v(\d+\.\d+\.\d+)/m),
+    probe(['kubectl'], ['version', '--client'], /(?:Client Version: v?|GitVersion:"v)(\d+\.\d+\.\d+)/),
+    probe(['helm'], ['version', '--short'], /^v?(\d+\.\d+\.\d+)/m),
+    probe(['ansible-playbook'], ['--version'], /^ansible-playbook \[core (\d+\.\d+(?:\.\d+)?)\]/m),
+    probe(['sam'], ['--version'], /SAM CLI, version (\d+\.\d+\.\d+)/),
+    probe(['bicep'], ['--version'], /Bicep CLI version (\d+\.\d+\.\d+)/)
   ]);
   const sfml = x11 && gl && xrandr && xcursor && udev && freetype ? { version: 'X11 / OpenGL', file: x11.file } : undefined;
   const results = {
     ...docker,
     terraform: requireVersion(terraform, 1, 9),
+    kubectl: requireVersion(kubectl, 1, 27),
+    helm: requireVersion(helm, 3, 8),
+    ansible: requireVersion(ansible, 2, 15),
+    sam: requireVersion(sam, 1, 100),
+    bicep: requireVersion(bicep, 0, 24),
     git,
     ...python.results,
     rust: rustc && cargo && { ...rustc, version: rustc.version + ' / Cargo ' + cargo.version },

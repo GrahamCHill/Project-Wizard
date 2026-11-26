@@ -1,0 +1,14 @@
+# Linode Object Storage speaks the S3 API. Replace the bucket and the endpoint for your region.
+bucket = "replace-with-your-state-bucket"
+key    = "__PROJECT_SLUG__/dev/terraform.tfstate"
+region = "us-ord"
+
+endpoints = {
+  s3 = "https://us-ord-1.linodeobjects.com"
+}
+
+skip_credentials_validation = true
+skip_region_validation      = true
+skip_requesting_account_id  = true
+skip_metadata_api_check     = true
+skip_s3_checksum            = true

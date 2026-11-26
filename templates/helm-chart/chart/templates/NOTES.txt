@@ -1,0 +1,18 @@
+{{- if .Values.ingress.enabled }}
+Open the application at:
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else }}
+Reach the application from your computer with:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward service/{{ include "app.fullname" . }} 8080:{{ .Values.service.port }}
+
+Then open http://127.0.0.1:8080
+{{- end }}
+
+Run the chart's connection test with:
+
+  helm test {{ .Release.Name }} --namespace {{ .Release.Namespace }}

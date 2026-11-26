@@ -27,10 +27,8 @@ const settingsLanguages = byId('settings-languages');
 const settingsTemplates = byId('settings-templates');
 const recentList = byId('recent-project-list');
 const groupTitles = {
-  all: 'Templates', cli: 'Command Line', desktop: 'Desktop', mobile: 'Mobile', graphics: 'Graphics', frontend: 'Web Frontend', server: 'Web Server',
-  monogame: 'MonoGame', raylib: 'Raylib', games: 'Game Engines', blender: 'Blender', ai: 'ML & AI',
-  documents: 'Documents', zip: 'Custom ZIPs', vr: 'VR', systems: 'Systems', docker: 'Docker',
-  infrastructure: 'Infrastructure'
+  all: 'Templates', cli: 'Command Line', systems: 'Systems', apps: 'Desktop & Mobile', games: 'Games & Graphics', blender: 'Blender',
+  ai: 'Data & AI', documents: 'Documents', vr: 'VR', web: 'Web', cloud: 'Cloud & DevOps', misc: 'Misc', zip: 'Custom ZIPs', general: 'General'
 };
 
 let catalog;
@@ -431,6 +429,7 @@ function updateForm(refreshChoices = false) {
     !environmentReady || missingTarget || missingIcon || selectedBuild()?.canCreate === false;
   byId('refresh').disabled = pending || !catalog;
   byId('settings').disabled = pending || !catalog;
+  updateDefaultLocation();
   for (const control of [nameInput, locationInput, openMode, byId('browse'), byId('choose-zip'), byId('install')]) {
     control.disabled = pending;
   }
@@ -483,7 +482,7 @@ function updateCatalog({ preserveSelection = false, refreshChoices = false } = {
   }
 
   byId('source').hidden = group !== 'zip' || !catalog;
-  byId('mono-setup').hidden = group !== 'monogame' || !catalog || Boolean(catalog.monoCount);
+  byId('mono-setup').hidden = group !== 'games' || !catalog || Boolean(catalog.monoCount);
   if (catalog) {
     byId('source-path').textContent = catalog.zipError || catalog.zipDirectory || 'Choose the folder that contains your ZIP templates.';
     byId('source-path').title = catalog.zipDirectory;
@@ -518,14 +517,35 @@ function updateCatalog({ preserveSelection = false, refreshChoices = false } = {
   else if (visibleTemplates.length) status.textContent = '';
   else if (query || languageSelect.value) status.textContent = 'No templates match your filters.';
   else if (group === 'zip' && catalog?.zipDirectory && !catalog.zipError) status.textContent = 'No ZIP files in this folder.';
-  else if (group === 'monogame' || group === 'zip') status.textContent = '';
+  else if (group === 'zip') status.textContent = '';
   else if (readyOnly.checked && categoryTemplates.length) status.textContent =
-    group === 'docker' ? 'Docker is unavailable. Clear Ready to use to see the starters and Docker setup guides.' :
+    group === 'cloud' ? 'Docker, Terraform, and the other cloud tools are not installed. Clear Ready to use to see the starters and setup guides.' :
       'Clear Ready to use to show templates that need setup.';
   else if (readyOnly.checked) status.textContent = 'No templates are ready in this category. Clear Ready to use to see setup options.';
   else status.textContent = 'No templates available.';
   status.hidden = !status.textContent;
   updateForm(refreshChoices);
+}
+
+// Compares folders the way the platform does, ignoring a trailing separator and, on Windows, case.
+function sameFolder(first, second) {
+  const normalize = value => {
+    const text = value.trim().replaceAll('\\', '/').replace(/\/+$/, '');
+    return catalog?.separator === '\\' ? text.toLowerCase() : text;
+  };
+  return Boolean(first && second) && normalize(first) === normalize(second);
+}
+
+function updateDefaultLocation() {
+  const button = byId('default-location');
+  const current = locationInput.value.trim();
+  const saved = catalog?.defaultLocation || '';
+  const isDefault = sameFolder(current, saved);
+  button.textContent = isDefault ? 'Clear default' : 'Save as default';
+  button.title = isDefault ? 'Stop starting new projects in ' + saved :
+    saved ? 'New projects start in ' + saved + '. Save this location instead.' :
+      'Start new projects in this location every time';
+  button.disabled = pending || !catalog || (!isDefault && !current);
 }
 
 function clearMessage() {
@@ -659,6 +679,11 @@ byId('settings-form').addEventListener('submit', event => {
   byId('settings-error').hidden = true;
   vscode.postMessage({ type: 'saveCatalogSettings', settings });
 });
+byId('default-location').addEventListener('click', () => {
+  const location = locationInput.value.trim();
+  const clearing = sameFolder(location, catalog?.defaultLocation);
+  vscode.postMessage(clearing ? { type: 'clearDefaultLocation' } : { type: 'saveDefaultLocation', location });
+});
 byId('browse').addEventListener('click', () => vscode.postMessage({ type: 'browse', location: locationInput.value.trim() }));
 byId('choose-zip').addEventListener('click', () => vscode.postMessage({ type: 'chooseZip' }));
 byId('show-output').addEventListener('click', () => vscode.postMessage({ type: 'showOutput' }));
@@ -746,6 +771,20 @@ window.addEventListener('message', ({ data }) => {
     case 'setupFeedback':
       byId('setup-feedback').textContent = data.message;
       byId('setup-feedback').hidden = false;
+      break;
+    case 'defaultLocation':
+      if (catalog) catalog.defaultLocation = data.defaultLocation;
+      if (data.message) {
+        clearMessage();
+        operation.textContent = data.message;
+        operation.hidden = false;
+      }
+      updateForm();
+      break;
+    case 'defaultLocationError':
+      clearMessage();
+      errorMessage.textContent = data.message;
+      errorMessage.hidden = false;
       break;
     case 'catalogSettingsSaved':
       setSettingsSaving(false);

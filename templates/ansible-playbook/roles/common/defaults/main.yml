@@ -1,0 +1,11 @@
+---
+# Packages installed on every server.
+common_packages:
+  - ca-certificates
+  - curl
+  - ufw
+  - unattended-upgrades
+
+# Firewall ports that stay open. SSH must stay on the list so Ansible keeps its connection.
+common_firewall_allowed_ports:
+  - "22"

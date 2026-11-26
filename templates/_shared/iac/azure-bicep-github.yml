@@ -1,0 +1,96 @@
+# Builds and lints the Bicep files on every pull request and push. It can also preview and deploy changes.
+#
+# Build needs no Azure subscription. Preview and Deploy stay off until you set the repository variable
+# BICEP_DEPLOY to "true" and give the workflow an Azure identity. README.md ("Deploy from GitHub Actions") lists the steps.
+name: Bicep
+
+on:
+  pull_request:
+    paths:
+      - "**/*.bicep"
+      - "**/*.bicepparam"
+      - "bicepconfig.json"
+      - ".github/workflows/bicep.yml"
+  push:
+    # Change these names if your default branch has a different name.
+    branches: [main, master]
+    paths:
+      - "**/*.bicep"
+      - "**/*.bicepparam"
+      - "bicepconfig.json"
+      - ".github/workflows/bicep.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: bicep-${{ github.ref }}
+  # Never cancel a run that may be changing Azure resources.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile the template and its parameters
+        run: |
+          az bicep build --file main.bicep --stdout > /dev/null
+          az bicep build-params --file main.bicepparam --stdout > /dev/null
+      - name: Lint
+        run: az bicep lint --file main.bicep
+
+  preview:
+    name: What-if
+    needs: build
+    # Pull requests only, never for forks, and only once deployment is enabled.
+    if: >-
+      github.event_name == 'pull_request' && vars.BICEP_DEPLOY == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Show what the deployment would change
+        run: |
+          {
+            echo '### Bicep what-if'
+            echo '~~~'
+            az deployment group what-if --resource-group "$RESOURCE_GROUP" --parameters main.bicepparam --no-pretty-print --result-format ResourceIdOnly || true
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: >-
+      github.event_name == 'push' && vars.BICEP_DEPLOY == 'true' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    # Add required reviewers to this environment in Settings > Environments for a manual approval step.
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy
+        run: az deployment group create --resource-group "$RESOURCE_GROUP" --parameters main.bicepparam --name "deploy-${GITHUB_RUN_NUMBER}"

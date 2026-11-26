@@ -47,7 +47,7 @@ void light_at(const World *world, const float position[3], const float normal[3]
         if (distance < 1e-6f) continue;
         float facing = (normal[0] * to_light[0] + normal[1] * to_light[1] + normal[2] * to_light[2]) / distance;
         if (facing <= 0) continue;
-        float strength = (lamp->intensity / 100.0f) * facing / (1.0f + 0.1f * distance_squared);
+        float strength = (lamp->intensity / WORLD_LAMP_UNIT) * facing / (1.0f + 0.1f * distance_squared);
         for (int channel = 0; channel < 3; channel++) out[channel] += lamp->color[channel] * strength;
     }
     for (int channel = 0; channel < 3; channel++) {

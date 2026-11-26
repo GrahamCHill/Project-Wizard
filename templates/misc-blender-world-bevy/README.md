@@ -61,5 +61,6 @@ Blender scene, and doing that in plain functions means the tests run without a w
 level, you can replace `world.rs` with `SceneRoot` and keep the player.
 
 Coordinates follow glTF and Bevy: Y is up, and units are meters. The player is 0.6 m wide and 1.7 m tall, jumps about 0.8 m, and
-cannot climb a ledge higher than their feet. Lamps keep Blender's units: the file stores candela, and `lamp_lumens` in `src/main.rs`
-turns that into Bevy's lumens. Bevy lights physically, so very bright or dim lamps may need that number scaled.
+cannot climb a ledge higher than their feet. Lamps keep Blender's units: Blender exports
+54.35 candela for every watt of a point lamp, and `lamp_lumens` in `src/main.rs` turns candela into Bevy's lumens the same way Bevy's own
+glTF loader does. The sample lamp is a 120 W Blender lamp. Bevy lights physically, so use real-world strengths and it will look right.

@@ -72,7 +72,7 @@ nodes.push({ name: 'Lamp', translation: [0, 2.8, 0], extensions: { KHR_lights_pu
 const gltf = {
   asset: { version: '2.0', generator: 'Project Wizard sample world (same layout as the Blender exporter)' },
   extensionsUsed: ['KHR_lights_punctual'],
-  extensions: { KHR_lights_punctual: { lights: [{ type: 'point', name: 'Lamp', color: [1, 0.93, 0.8], intensity: 120 }] } },
+  extensions: { KHR_lights_punctual: { lights: [{ type: 'point', name: 'Lamp', color: [1, 0.93, 0.8], intensity: 6522.17 }] } },
   scene: 0,
   scenes: [{ name: 'Scene', nodes: nodes.map((_, index) => index) }],
   nodes,

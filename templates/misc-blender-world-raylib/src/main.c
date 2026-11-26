@@ -43,6 +43,7 @@ static const char *FRAGMENT_SHADER =
     "uniform vec3 lightColor[8];\n"
     "uniform float lightIntensity[8];\n"
     "uniform float ambient;\n"
+    "uniform float lampUnit;\n"
     "out vec4 finalColor;\n"
     "void main() {\n"
     "    vec3 normal = normalize(fragNormal);\n"
@@ -51,7 +52,7 @@ static const char *FRAGMENT_SHADER =
     "        vec3 toLight = lightPosition[i] - fragPosition;\n"
     "        float distance2 = dot(toLight, toLight);\n"
     "        float facing = max(dot(normal, normalize(toLight)), 0.0);\n"
-    "        light += lightColor[i] * (lightIntensity[i] / 100.0) * facing / (1.0 + 0.1 * distance2);\n"
+    "        light += lightColor[i] * (lightIntensity[i] / lampUnit) * facing / (1.0 + 0.1 * distance2);\n"
     "    }\n"
     "    finalColor = vec4(fragColor.rgb * min(light, vec3(1.0)), fragColor.a);\n"
     "}\n";
@@ -99,12 +100,13 @@ static void send_lights(Shader shader, const World *world) {
         memcpy(colors[i], world->lights[i].color, sizeof colors[i]);
         intensities[i] = world->lights[i].intensity;
     }
-    float ambient = 0.25f;
+    float ambient = 0.25f, lamp_unit = WORLD_LAMP_UNIT;
     SetShaderValue(shader, GetShaderLocation(shader, "lightCount"), &count, SHADER_UNIFORM_INT);
     SetShaderValueV(shader, GetShaderLocation(shader, "lightPosition"), positions, SHADER_UNIFORM_VEC3, MAX_LIGHTS);
     SetShaderValueV(shader, GetShaderLocation(shader, "lightColor"), colors, SHADER_UNIFORM_VEC3, MAX_LIGHTS);
     SetShaderValueV(shader, GetShaderLocation(shader, "lightIntensity"), intensities, SHADER_UNIFORM_FLOAT, MAX_LIGHTS);
     SetShaderValue(shader, GetShaderLocation(shader, "ambient"), &ambient, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(shader, GetShaderLocation(shader, "lampUnit"), &lamp_unit, SHADER_UNIFORM_FLOAT);
 }
 
 /* The world file may be given on the command line. Otherwise look in the folder you started from, then next to the program. */

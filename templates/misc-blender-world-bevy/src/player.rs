@@ -51,7 +51,9 @@ impl Player {
         self.position + Vec3::Y * EYE_HEIGHT
     }
 
-    /// The direction the camera looks, as a unit vector.
+    /// The direction the camera looks, as a unit vector. The Bevy camera is turned with a rotation instead, so only tests and
+    /// code that wants to aim (a ray, a shot) call this.
+    #[allow(dead_code)]
     pub fn direction(&self) -> Vec3 {
         let flat = self.pitch.cos();
         Vec3::new(-self.yaw.sin() * flat, self.pitch.sin(), -self.yaw.cos() * flat)

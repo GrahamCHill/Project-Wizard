@@ -18,6 +18,9 @@
 
 #define WORLD_NAME_LENGTH 64
 
+/* The candela of a 100 W Blender point lamp, which the examples treat as one unit of light. Their shading divides by it. */
+#define WORLD_LAMP_UNIT 5435.0f
+
 typedef struct {
     char name[WORLD_NAME_LENGTH];
     float min[3];
@@ -37,7 +40,7 @@ typedef struct {
 typedef struct {
     float position[3];
     float color[3];
-    float intensity;      /* in candela, as Blender exports it. About 100 is a bright room lamp. */
+    float intensity;      /* in candela, as Blender exports it: every watt of a Blender point lamp is 54.35 cd. See WORLD_LAMP_UNIT. */
 } WorldLight;
 
 typedef struct {

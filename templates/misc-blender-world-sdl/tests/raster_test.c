@@ -191,7 +191,7 @@ static void test_the_nearer_surface_wins(void) {
 
 static void test_light_weakens_with_distance_and_angle(void) {
     World world = {0};
-    WorldLight lamp = {{0, 3, 0}, {1, 1, 1}, 100};
+    WorldLight lamp = {{0, 3, 0}, {1, 1, 1}, WORLD_LAMP_UNIT};
     world.lights = &lamp;
     world.light_count = 1;
     const float up[3] = {0, 1, 0}, down[3] = {0, -1, 0};

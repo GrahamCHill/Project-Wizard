@@ -10,6 +10,8 @@ It checks the scene first and prints what the game cannot use. A missing spawn p
 mesh stops the export, because the game could not start or the box would be wrong. Everything else is a warning.
 """
 
+import base64
+import json
 import os
 import sys
 
@@ -49,7 +51,7 @@ def check_scene(scene):
         if value != "box":
             warnings.append(f"'{obj.name}' has collider = {value!r}. Only the text 'box' is understood, so it is ignored.")
         elif obj.type != "MESH":
-            errors.append(f"'{obj.name}' has a collider but is a {obj.type.lower()}, not a mesh, so it has no shape to wrap a box around.")
+            errors.append(f"'{obj.name}' has a collider but its type is {obj.type.lower()}, not mesh, so it has no shape to wrap a box around.")
         else:
             colliders += 1
     if colliders == 0:
@@ -71,18 +73,48 @@ def check_scene(scene):
             continue
         for slot in obj.material_slots:
             material = slot.material
-            if material and material.use_nodes and any(node.type == "TEX_IMAGE" for node in material.node_tree.nodes):
+            tree = getattr(material, "node_tree", None)  # newer Blender versions always have a node tree, older ones may not
+            if tree and any(node.type == "TEX_IMAGE" for node in tree.nodes):
                 warnings.append(f"The material '{material.name}' uses an image texture. Textures are not supported, so only its Base Color value is used.")
         if obj.animation_data and obj.animation_data.action:
             warnings.append(f"'{obj.name}' is animated. Animation is not exported.")
     return errors, sorted(set(warnings))
 
 
+def embed_buffers(path):
+    """Moves the .bin files that Blender wrote beside the .gltf into the .gltf itself, as base64, and deletes them.
+
+    Newer versions of Blender have no single-file .gltf format any more. The game reads either, but one file is easier to move
+    around and to keep in version control."""
+    with open(path, encoding="utf-8") as file:
+        document = json.load(file)
+    folder = os.path.dirname(path)
+    embedded = []
+    for buffer in document.get("buffers", []):
+        uri = buffer.get("uri")
+        if not uri or uri.startswith("data:"):
+            continue
+        binary_path = os.path.join(folder, uri)
+        with open(binary_path, "rb") as binary:
+            data = binary.read()
+        buffer["uri"] = "data:application/octet-stream;base64," + base64.b64encode(data).decode("ascii")
+        embedded.append(binary_path)
+    if embedded:
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump(document, file, indent=2)
+            file.write("\n")
+        for binary_path in embedded:
+            os.remove(binary_path)
+
+
 def export(path):
-    # Settings the exporter does not have, because this Blender is older or newer, are left out instead of failing.
+    exporter = bpy.ops.export_scene.gltf.get_rna_type().properties
+    formats = exporter["export_format"].enum_items.keys() if "export_format" in exporter else []
+    # One file with the geometry inside, if this Blender can write it. Otherwise a .gltf plus a .bin, which is embedded afterward.
+    export_format = "GLTF_EMBEDDED" if "GLTF_EMBEDDED" in formats else "GLTF_SEPARATE"
     wanted = {
         "filepath": path,
-        "export_format": "GLTF_EMBEDDED",   # one file, with the geometry inside
+        "export_format": export_format,
         "export_extras": True,               # custom properties, which is how colliders are marked
         "export_lights": True,               # KHR_lights_punctual
         "export_cameras": False,
@@ -97,13 +129,16 @@ def export(path):
         "use_visible": True,                 # skip hidden helper objects
         "use_selection": False,
     }
-    available = bpy.ops.export_scene.gltf.get_rna_type().properties.keys()
-    settings = {key: value for key, value in wanted.items() if key in available}
+    # Settings the exporter does not have, because this Blender is older or newer, are left out instead of failing.
+    settings = {key: value for key, value in wanted.items() if key in exporter}
     for key in ("export_extras", "export_lights", "export_format"):
         if key not in settings:
             raise RuntimeError(f"This version of Blender's glTF exporter has no '{key}' setting. Use Blender 3.6 or newer.")
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    return bpy.ops.export_scene.gltf(**settings)
+    result = bpy.ops.export_scene.gltf(**settings)
+    if "FINISHED" in result:
+        embed_buffers(path)
+    return result
 
 
 def main():

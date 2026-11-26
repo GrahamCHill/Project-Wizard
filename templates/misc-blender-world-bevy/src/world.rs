@@ -32,6 +32,8 @@ pub struct WorldMesh {
 
 #[derive(Debug, Clone)]
 pub struct Collider {
+    /// The Blender object's name, handy when debugging which box stopped the player.
+    #[allow(dead_code)]
     pub name: String,
     pub min: Vec3,
     pub max: Vec3,
@@ -41,7 +43,7 @@ pub struct Collider {
 pub struct Lamp {
     pub position: Vec3,
     pub color: Vec3,
-    /// Candela, as Blender exports it.
+    /// Candela, as Blender exports it: every watt of a Blender point lamp is 54.35 cd, so a 100 W lamp is about 5435.
     pub intensity: f32,
 }
 
@@ -302,7 +304,7 @@ mod tests {
         let lamp = sample().lamps[0];
         assert!(near(lamp.position.y, 2.8));
         assert!(near(lamp.color.y, 0.93));
-        assert!(near(lamp.intensity, 120.0));
+        assert!((lamp.intensity - 6522.17).abs() < 0.01); // a 120 W Blender lamp
     }
 
     #[test]

@@ -95,7 +95,7 @@ static void test_sample_world(const char *path) {
 
     CHECK_NEAR(world.lights[0].position[1], 2.8f, 1e-5);
     CHECK_NEAR(world.lights[0].color[1], 0.93f, 1e-5);
-    CHECK_NEAR(world.lights[0].intensity, 120, 1e-3);
+    CHECK_NEAR(world.lights[0].intensity, 6522.17f, 0.01); /* a 120 W Blender lamp */
     CHECK_NEAR(world.bounds_min[0], -6.15f, 1e-4);
     CHECK_NEAR(world.bounds_max[1], 3.0f, 1e-4);
     CHECK_NEAR(world.bounds_min[1], -0.2f, 1e-4);

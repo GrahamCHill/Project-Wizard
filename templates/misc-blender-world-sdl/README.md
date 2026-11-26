@@ -67,3 +67,6 @@ Coordinates follow glTF: Y is up, and units are meters. The player is 0.6 m wide
 climb a ledge higher than their feet. Light is a flat ambient level plus each lamp, which weakens with distance and with the angle
 of the surface. The loader reads `.gltf` files with embedded or `.bin` buffers. It does not read textures, animation, skins, or
 compressed meshes, and it says so in its error message when it meets one.
+
+Lamps keep Blender's units: it exports 54.35 candela for every watt of a point lamp. The shading treats a 100 W lamp as one
+unit of light (`WORLD_LAMP_UNIT` in `src/world.h`), so the sample's 120 W lamp is 1.2. Change the constant to brighten or dim every lamp at once.
